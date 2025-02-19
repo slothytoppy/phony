@@ -48,128 +48,156 @@ impl<const SIZE: usize> Cpu<SIZE> {
 
     pub fn parse(&self) -> Vec<Instruction> {
         let mut start = 0;
+        let mut instructions = vec![];
 
-        loop {
-            if start == SIZE {
+        while let Some(byte) = self.memory.memory().get(start) {
+            let Some(byte) = byte else {
                 break;
-            }
-            match self.memory.read(start as u16) {
-                Some(val) => {
-                    let op = <u16 as TryInto<OpCode>>::try_into(val);
-                    if op.is_ok() {}
-                    println!("{op:?}");
-                }
-                None => {}
-            }
-            start += 1;
-        }
-
-        return vec![];
-    }
-
-    pub fn execute(&mut self) {
-        let mut op_addr = 1;
-        loop {
-            let mut should_call_next_instruction = true;
-            let exec_addr = self.registers().get(Register::IP);
-            if exec_addr == SIZE {
-                return;
-            }
-            let Some(op) = self.memory.read(exec_addr as u16) else {
-                continue;
             };
-            println!("reading at addr {exec_addr}");
-            match op.try_into() {
+            match <u16 as TryInto<OpCode>>::try_into(*byte) {
                 Ok(op) => {
+                    //println!("opcode {op:?}");
                     match op {
                         OpCode::PushRegVal => {
-                            op_addr = (<OpCode as Into<u16>>::into(op) - exec_addr as u16)
-                                .saturating_sub(1);
-                            println!("op addr {op_addr}");
-                            let ip = exec_addr + 1;
-                            let Ok(register): Result<Register, ()> =
-                                (match self.memory.read(ip as u16) {
-                                    Some(val) => val.try_into(),
-                                    None => panic!(),
-                                })
-                            else {
+                            let Some(left) = self.memory.memory().get(start + 1) else {
                                 panic!()
                             };
-                            let ip = exec_addr + 2;
-                            let Some(val) = self.memory.read(ip as u16) else {
+                            let left = left.unwrap();
+                            let Some(right) = self.memory.memory().get(start + 2) else {
                                 panic!();
                             };
-                            *self.registers.get_mut(register) = val as usize;
-                            println!("reg {register} val {val}");
+                            let right = right.unwrap();
+                            //println!("left {left:?} right {right:?}");
+
+                            instructions.push(Instruction::PushRegVal(
+                                Register::try_from(left).unwrap(),
+                                right as usize,
+                            ));
+                            start += 3;
+                            //println!(
+                            //    "indexing {:?}",
+                            //    self.memory.memory().get(start).unwrap().unwrap()
+                            //);
                         }
                         OpCode::PushRegReg => {
-                            let ip = exec_addr + 1;
-                            let Ok(left_register): Result<Register, ()> = self
-                                .memory
-                                .read(ip as u16)
-                                .unwrap_or_else(|| panic!())
-                                .try_into()
-                            else {
-                                panic!("invalid register: {}", ip);
+                            let Some(left) = self.memory.memory().get(start + 1) else {
+                                panic!()
                             };
-                            let ip = exec_addr + 1;
-                            let Ok(right_register): Result<Register, ()> = self
-                                .memory
-                                .read(ip as u16)
-                                .unwrap_or_else(|| panic!())
-                                .try_into()
-                            else {
-                                panic!("invalid register: {}", ip);
+                            let left = left.unwrap();
+                            let Some(right) = self.memory.memory().get(start + 2) else {
+                                panic!();
                             };
-                            *self.registers.get_mut(left_register) =
-                                self.registers.get(right_register);
+                            let right = right.unwrap();
+                            //println!("left {left:?} right {right:?}");
+
+                            instructions.push(Instruction::PushRegReg(
+                                Register::try_from(left).unwrap(),
+                                Register::try_from(right).unwrap(),
+                            ));
+                            start += 2
                         }
                         OpCode::AddRegReg => {
-                            //let (res, overflow) = self
-                            //    .registers
-                            //    .get_mut(register)
-                            //    .overflowing_add(self.registers.get(register1));
-                            //if overflow {
-                            //    *self.registers.get_mut(register) = 0;
-                            //} else {
-                            //    *self.registers.get_mut(register) = res;
-                            //}
+                            let Some(left) = self.memory.memory().get(start + 1) else {
+                                panic!()
+                            };
+                            let left = left.unwrap();
+                            let Some(right) = self.memory.memory().get(start + 2) else {
+                                panic!();
+                            };
+                            let right = right.unwrap();
+                            //println!("left {left:?} right {right:?}");
+
+                            instructions.push(Instruction::AddRegReg(
+                                Register::try_from(left).unwrap(),
+                                Register::try_from(right).unwrap(),
+                            ));
+                            start += 2
                         }
                         OpCode::AddRegNum => {
-                            //let (res, overflow) = self.registers.get_mut(register).overflowing_add(val);
-                            //if overflow {
-                            //    *self.registers.get_mut(register) = 0
-                            //} else {
-                            //    *self.registers.get_mut(register) = res
-                            //}
+                            let Some(left) = self.memory.memory().get(start + 1) else {
+                                panic!()
+                            };
+                            let left = left.unwrap();
+                            let Some(right) = self.memory.memory().get(start + 2) else {
+                                panic!();
+                            };
+                            let right = right.unwrap();
+                            //println!("left {left:?} right {right:?}");
+
+                            instructions.push(Instruction::PushRegVal(
+                                Register::try_from(left).unwrap(),
+                                right as usize,
+                            ));
+                            start += 2
                         }
                         OpCode::Jump => {
-                            //println!(
-                            //    "jumping to addr {addr:#02x} op at addr {:?}",
-                            //    self.memory.read(addr as u16)
-                            //);
-                            //*self.registers.get_mut(Register::IP) = addr;
-                            should_call_next_instruction = false;
+                            let Some(left) = self.memory.memory().get(start + 1) else {
+                                panic!()
+                            };
+                            let left = left.unwrap();
+                            instructions.push(Instruction::Jump(left as usize));
+                            start += 1
                         }
-                        OpCode::Call => todo!(),
-                        OpCode::PopReg => {
-                            //let val = self.registers().get(register);
-                            //let addr = self.registers().get(Register::SP);
-                            //self.memory.write(addr as u16, op);
+                        OpCode::Call => {
+                            instructions.push(Instruction::Call);
+                            start += 1
                         }
                         OpCode::Halt => {
-                            println!("op addr {op_addr}");
+                            instructions.push(Instruction::Halt);
+                            start += 1
+                        }
+                        OpCode::PopReg => {
+                            let Some(left) = self.memory.memory().get(start + 1) else {
+                                panic!()
+                            };
+                            let left = left.unwrap();
+                            match Register::try_from(left) {
+                                Ok(val) => {
+                                    instructions.push(Instruction::PopReg(val));
+                                }
+                                Err(_e) => {}
+                            }
 
-                            return;
+                            start += 1
                         }
                     }
                 }
-                Err(e) => {}
+                Err(_e) => {}
+            }
+        }
+
+        instructions
+    }
+
+    pub fn execute(&mut self, insts: Vec<Instruction>) {
+        let mut op_addr = 1;
+        println!("{insts:?}");
+        for inst in insts {
+            let mut should_call_next_instruction = true;
+            match inst {
+                Instruction::PushRegReg(register, register1) => {
+                    *self.registers.get_mut(register) = self.registers.get(register1);
+                }
+                Instruction::PushRegVal(register, val) => *self.registers.get_mut(register) = val,
+                Instruction::PopReg(register) => todo!(),
+                Instruction::AddRegReg(register, register1) => {
+                    self.registers
+                        .get_mut(register)
+                        .saturating_add(self.registers.get(register1));
+                }
+                Instruction::AddRegNum(register, val) => {
+                    self.registers.get_mut(register).saturating_add(val);
+                }
+
+                Instruction::Call => should_call_next_instruction = false,
+                Instruction::Jump(addr) => {
+                    should_call_next_instruction = false;
+                    *self.registers.get_mut(Register::IP) = addr;
+                }
+                Instruction::Halt => return,
             }
             if should_call_next_instruction {
-                let opcode = OpCode::try_from(op_addr as u16);
-                println!("op_addr {:?}", opcode);
-                self.next_instruction(opcode.unwrap());
+                self.next_instruction(OpCode::from(inst));
             }
         }
     }

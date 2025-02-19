@@ -8,14 +8,14 @@ use opcodes::*;
 
 fn main() {
     let mut cpu = Cpu::<4096>::new();
-    println!("{:?}", cpu.parse());
     cpu.memory_mut().write(0, OpCode::PushRegVal.into());
     cpu.memory_mut().write(1, registers::Register::R3.into());
     cpu.memory_mut().write(2, 40);
     cpu.memory_mut().write(3, OpCode::Halt.into());
-    cpu.execute();
+    let insts = cpu.parse();
+    cpu.execute(insts);
     println!("{:?}", cpu.registers());
-    cpu.dump();
+    //cpu.dump();
 }
 
 #[cfg(test)]

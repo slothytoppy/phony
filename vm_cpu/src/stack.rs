@@ -1,3 +1,5 @@
+use std::slice::Iter;
+
 use crate::opcodes::{Instruction, OpCode};
 
 #[derive(Debug)]
@@ -24,11 +26,18 @@ impl<const SIZE: usize> Stack<SIZE> {
         println!("reading memory:");
         for byte in self.memory.iter() {
             if let Some(byte) = *byte {
+                println!("byte {byte:?}");
                 let op: Result<OpCode, ()> = byte.try_into();
                 println!("byte {:?}", op)
-            } else {
-                break;
             }
         }
+    }
+
+    pub fn iter(&self) -> Iter<'_, Option<u16>> {
+        self.memory.iter()
+    }
+
+    pub fn memory(&self) -> &[Option<u16>; SIZE] {
+        &self.memory
     }
 }

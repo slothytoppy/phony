@@ -26,6 +26,21 @@ pub enum Instruction {
     Halt,
 }
 
+impl From<Instruction> for OpCode {
+    fn from(value: Instruction) -> Self {
+        match value {
+            Instruction::PushRegReg(_, _) => Self::PushRegReg,
+            Instruction::PushRegVal(_, _) => Self::PushRegVal,
+            Instruction::PopReg(_) => Self::PopReg,
+            Instruction::AddRegReg(_, _) => Self::AddRegReg,
+            Instruction::AddRegNum(_, _) => Self::AddRegNum,
+            Instruction::Call => Self::Call,
+            Instruction::Jump(_) => Self::Jump,
+            Instruction::Halt => Self::Halt,
+        }
+    }
+}
+
 impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
