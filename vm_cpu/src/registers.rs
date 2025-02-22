@@ -8,24 +8,33 @@ pub enum Register {
     R3,
     R4,
     SP,
+    FP,
 }
 
 impl From<Register> for u16 {
     fn from(value: Register) -> Self {
-        match value {
-            Register::IP => Register::IP as u16,
-            Register::R1 => Register::R1 as u16,
-            Register::R2 => Register::R2 as u16,
-            Register::R3 => Register::R3 as u16,
-            Register::R4 => Register::R4 as u16,
-            Register::SP => Register::SP as u16,
-        }
+        value as u16
     }
 }
 
 impl TryFrom<u16> for Register {
     type Error = ();
     fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Register::IP),
+            1 => Ok(Register::R1),
+            2 => Ok(Register::R2),
+            3 => Ok(Register::R3),
+            4 => Ok(Register::R4),
+            5 => Ok(Register::SP),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<&u16> for Register {
+    type Error = ();
+    fn try_from(value: &u16) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Register::IP),
             1 => Ok(Register::R1),
@@ -47,6 +56,7 @@ impl Display for Register {
             Register::R3 => f.write_str("R3"),
             Register::R4 => f.write_str("R4"),
             Register::SP => f.write_str("SP"),
+            Register::FP => f.write_str("FP"),
         }
     }
 }

@@ -2,28 +2,62 @@ use std::fmt::Display;
 
 use crate::registers::Register;
 
-#[derive(Clone, Copy, Debug)]
-pub enum OpCode {
-    PushRegReg,
-    PushRegVal,
-    PopReg,
-    AddRegReg,
-    AddRegNum,
-    Jump,
-    Call,
-    Halt,
+macro_rules! op_codes {
+    ($($variant:ident = $value:expr, $amount:ident = $arg_amount:literal),* $(,)?) => {
+        #[derive(Debug, Clone, Copy)]
+        #[repr(u8)]
+        #[rustfmt::skip]
+        pub enum OpCode {
+            $($variant = $value),*
+        }
+
+        impl OpCode {
+            pub fn increment_amount(&self) -> u16 {
+                match self {
+                    $(OpCode::$variant => $arg_amount,)*
+                }
+            }
+        }
+
+        impl TryFrom<u16> for OpCode {
+            type Error = ();
+
+            fn try_from(value: u16) -> Result<OpCode, ()> {
+                match value {
+                    $(x if x == $value => Ok(OpCode::$variant),)*
+                    _v => Err(()),
+                }
+            }
+        }
+
+        impl From<OpCode> for u16 {
+            fn from(opcode: OpCode) -> Self  {
+                opcode as u16
+            }
+        }
+
+        impl std::fmt::Display for OpCode {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                $(Self::$variant { .. } => f.write_str(stringify!($variant))?,)*
+            }
+
+            write!(f, ": {self:?}")
+            }
+        }
+    }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Instruction {
-    PushRegReg(Register, Register),
-    PushRegVal(Register, usize),
-    PopReg(Register),
-    AddRegReg(Register, Register),
-    AddRegNum(Register, usize),
-    Call,
-    Jump(usize),
-    Halt,
+op_codes! {
+    PushRegReg = 0,  amount = 3,
+    PushRegVal = 1,  amount = 3,
+    AddRegReg  = 3,  amount = 3,
+    AddRegNum  = 4,  amount = 3,
+    Jump       = 6,  amount = 2,
+    PopReg     = 2,  amount =1,
+    Call       = 5,  amount = 1,
+    Halt       = 7,  amount = 1,
+    Ret        = 8,  amount = 1,
 }
 
 impl From<Instruction> for OpCode {
@@ -37,8 +71,22 @@ impl From<Instruction> for OpCode {
             Instruction::Call => Self::Call,
             Instruction::Jump(_) => Self::Jump,
             Instruction::Halt => Self::Halt,
+            Instruction::Ret => Self::Ret,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Instruction {
+    PushRegReg(Register, Register),
+    PushRegVal(Register, u16),
+    PopReg(Register),
+    AddRegReg(Register, Register),
+    AddRegNum(Register, u16),
+    Jump(u16),
+    Call,
+    Halt,
+    Ret,
 }
 
 impl Display for Instruction {
@@ -60,41 +108,7 @@ impl Display for Instruction {
             Instruction::Call => f.write_str("Call"),
             Instruction::Jump(addr) => f.write_str(&format!("Jumping to address {addr:#02x}")),
             Instruction::Halt => f.write_str("Halt"),
-        }
-    }
-}
-
-impl From<OpCode> for u16 {
-    fn from(value: OpCode) -> Self {
-        match value {
-            OpCode::PushRegReg => 0,
-            OpCode::PushRegVal => 1,
-            OpCode::PopReg => 2,
-            OpCode::AddRegReg => 3,
-            OpCode::AddRegNum => 4,
-            OpCode::Call => 5,
-            OpCode::Jump => 6,
-            OpCode::Halt => 7,
-        }
-    }
-}
-
-impl TryFrom<u16> for OpCode {
-    type Error = ();
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(OpCode::PushRegReg),
-            1 => Ok(OpCode::PushRegVal),
-            2 => Ok(OpCode::PopReg),
-            3 => Ok(OpCode::AddRegReg),
-            4 => Ok(OpCode::AddRegNum),
-            5 => Ok(OpCode::Call),
-            6 => Ok(OpCode::Jump),
-            7 => Ok(OpCode::Halt),
-            _ => {
-                println!("could not convert {value} into opcode");
-                Err(())
-            }
+            Instruction::Ret => f.write_str("Ret"),
         }
     }
 }
