@@ -8,7 +8,6 @@ pub enum Register {
     R3,
     R4,
     SP,
-    FP,
 }
 
 impl From<Register> for u16 {
@@ -56,28 +55,45 @@ impl Display for Register {
             Register::R3 => f.write_str("R3"),
             Register::R4 => f.write_str("R4"),
             Register::SP => f.write_str("SP"),
-            Register::FP => f.write_str("FP"),
         }
     }
 }
 
 impl Register {
     pub const fn len() -> usize {
-        7
+        6
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Registers {
     register: [usize; Register::len()],
 }
 
+impl PartialEq for Registers {
+    fn eq(&self, other: &Self) -> bool {
+        self.register == other.register
+    }
+}
+
+impl Default for Registers {
+    fn default() -> Self {
+        let mut register = [0; Register::len()];
+        register[Register::SP as usize] = u16::MAX as usize;
+        Self { register }
+    }
+}
+
 impl Registers {
-    pub fn get(&self, register: Register) -> usize {
-        self.register[register as usize]
+    pub fn get(&self, register: Register) -> u16 {
+        self.register[register as usize] as u16
     }
 
-    pub fn get_mut(&mut self, register: Register) -> &mut usize {
-        &mut self.register[register as usize]
+    pub fn set(&mut self, register: Register, val: u16) {
+        self.register[register as usize] = val as usize
+    }
+
+    pub fn into_slice(&self) -> &[usize; Register::len()] {
+        &self.register
     }
 }

@@ -40,11 +40,16 @@ impl<const SIZE: usize> Cpu<SIZE> {
     }
 
     pub fn next_instruction(&mut self, op: OpCode) -> Instruction {
-        let start_amount = self.registers.get(Register::IP);
+        let start_amount = self.registers.get(Register::IP) as usize;
+        println!("starting at {start_amount}");
         let bytecode = self
             .memory
             .get(start_amount..start_amount + op.increment_amount() as usize);
-        *self.registers.get_mut(Register::IP) += op.increment_amount() as usize;
+        self.registers.set(
+            Register::IP,
+            self.registers.get(Register::IP) + op.increment_amount(),
+        );
+        println!("bytecode {bytecode:?}");
         match op {
             OpCode::PushRegReg => {
                 let (mut left, mut right) = (Register::IP, Register::IP);
@@ -119,10 +124,25 @@ impl<const SIZE: usize> Cpu<SIZE> {
             OpCode::Call => Instruction::Call,
             OpCode::Halt => Instruction::Halt,
             OpCode::Ret => Instruction::Ret,
+            OpCode::Load => {
+                let Some(reg) = bytecode[1] else {
+                    println!("printing left {bytecode:?}");
+                    panic!();
+                };
+                let Some(addr) = bytecode[2] else {
+                    println!("printing right {bytecode:?}");
+                    panic!();
+                };
+                let Ok(reg) = Register::try_from(reg) else {
+                    println!("printing converting {reg:?} to register");
+                    panic!();
+                };
+                Instruction::Load(reg, addr)
+            }
         }
     }
 
-    pub fn parse(&self) -> Vec<Instruction> {
+    pub fn parse(&mut self) -> Vec<Instruction> {
         let mut start = 0;
         let mut instructions = vec![];
 
@@ -239,6 +259,9 @@ impl<const SIZE: usize> Cpu<SIZE> {
                             }
                         }
                         OpCode::Ret => {}
+                        OpCode::Load => {
+                            instructions.push(self.next_instruction(op));
+                        }
                     }
                 }
                 Err(_e) => {
@@ -252,38 +275,124 @@ impl<const SIZE: usize> Cpu<SIZE> {
     }
 
     pub fn execute(&mut self, insts: Vec<Instruction>) {
+        loop {
+            match self.memory[self.registers().get(Register::IP)] {
+                Some(code) => {
+                    println!("reading {:?}", code);
+                    let code: OpCode = code.try_into().unwrap();
+                    self.registers.set(
+                        Register::IP,
+                        self.registers.get(Register::IP) + code.increment_amount(),
+                    );
+                }
+                None => {
+                    println!("leaving loop {}", self.registers.get(Register::IP));
+
+                    break;
+                }
+            }
+        }
+        self.registers.set(Register::IP, 0);
         for inst in insts {
             let mut should_call_next_instruction = true;
             match inst {
                 Instruction::PushRegReg(register, register1) => {
-                    *self.registers.get_mut(register1) = self.registers.get(register);
+                    self.registers.set(register1, self.registers.get(register));
                 }
                 Instruction::PushRegVal(register, val) => {
-                    *self.registers.get_mut(register) = val as usize
+                    self.registers.set(register, val);
                 }
                 Instruction::PopReg(_register) => todo!(),
-                Instruction::AddRegReg(register, register1) => {
+                Instruction::AddRegReg(register, register1) => self.registers.set(
+                    register,
                     self.registers
-                        .get_mut(register)
-                        .saturating_add(self.registers.get(register1));
-                }
-                Instruction::AddRegNum(register, val) => {
-                    self.registers
-                        .get_mut(register)
-                        .saturating_add(val as usize);
-                }
+                        .get(register)
+                        .saturating_add(self.registers.get(register1)),
+                ),
+                Instruction::AddRegNum(register, val) => self
+                    .registers
+                    .set(register, self.registers.get(register).saturating_add(val)),
 
                 Instruction::Call => should_call_next_instruction = false,
                 Instruction::Jump(addr) => {
                     should_call_next_instruction = false;
-                    *self.registers.get_mut(Register::IP) = addr as usize;
+                    self.registers.set(Register::IP, addr);
                 }
                 Instruction::Halt => return,
                 Instruction::Ret => {}
+                Instruction::Load(reg, addr) => {
+                    let val = self.memory.get(addr as usize);
+                    if let Some(val) = val {
+                        self.registers.set(reg, *val);
+                    }
+                }
             }
             if should_call_next_instruction {
                 self.next_instruction(OpCode::from(inst));
             }
+        }
+    }
+
+    pub fn write_instructions_to_memory(&mut self, insts: Vec<Instruction>) {
+        for inst in insts {
+            match inst {
+                Instruction::PushRegReg(register, register1) => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::PushRegReg.into());
+                    self.memory_mut().write(ip + 1, register.into());
+                    self.memory_mut().write(ip + 2, register1.into());
+                }
+                Instruction::PushRegVal(register, val) => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::PushRegVal.into());
+                    self.memory_mut().write(ip + 1, register.into());
+                    self.memory_mut().write(ip + 2, val);
+                }
+                Instruction::PopReg(register) => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::PopReg.into());
+                    self.memory_mut().write(ip + 1, register.into());
+                }
+                Instruction::AddRegReg(register, register1) => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::AddRegReg.into());
+                    self.memory_mut().write(ip + 1, register.into());
+                    self.memory_mut().write(ip + 2, register1.into());
+                }
+                Instruction::AddRegNum(register, val) => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::AddRegNum.into());
+                    self.memory_mut().write(ip + 1, register.into());
+                    self.memory_mut().write(ip + 2, val);
+                }
+                Instruction::Jump(addr) => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::Jump.into());
+                    self.memory_mut().write(ip + 1, addr);
+                }
+                Instruction::Load(register, addr) => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::Load.into());
+                    self.memory_mut().write(ip + 1, register.into());
+                    self.memory_mut().write(ip + 2, addr);
+                }
+                Instruction::Call => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::Call.into());
+                }
+                Instruction::Halt => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::Halt.into());
+                }
+                Instruction::Ret => {
+                    let ip = self.registers.get(Register::IP);
+                    self.memory_mut().write(ip, OpCode::Ret.into());
+                }
+            }
+            self.registers.set(
+                Register::IP,
+                self.registers.get(Register::IP) + OpCode::from(inst).increment_amount(),
+            );
         }
     }
 }

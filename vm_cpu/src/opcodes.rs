@@ -54,10 +54,11 @@ op_codes! {
     AddRegReg  = 3,  amount = 3,
     AddRegNum  = 4,  amount = 3,
     Jump       = 6,  amount = 2,
-    PopReg     = 2,  amount =1,
+    PopReg     = 2,  amount = 1,
     Call       = 5,  amount = 1,
     Halt       = 7,  amount = 1,
     Ret        = 8,  amount = 1,
+    Load       = 9,  amount = 3,
 }
 
 impl From<Instruction> for OpCode {
@@ -72,6 +73,7 @@ impl From<Instruction> for OpCode {
             Instruction::Jump(_) => Self::Jump,
             Instruction::Halt => Self::Halt,
             Instruction::Ret => Self::Ret,
+            Instruction::Load(_, _) => Self::Load,
         }
     }
 }
@@ -84,6 +86,7 @@ pub enum Instruction {
     AddRegReg(Register, Register),
     AddRegNum(Register, u16),
     Jump(u16),
+    Load(Register, u16),
     Call,
     Halt,
     Ret,
@@ -109,6 +112,7 @@ impl Display for Instruction {
             Instruction::Jump(addr) => f.write_str(&format!("Jumping to address {addr:#02x}")),
             Instruction::Halt => f.write_str("Halt"),
             Instruction::Ret => f.write_str("Ret"),
+            Instruction::Load(reg, addr) => write!(f, "loading address: {addr} into {reg}"),
         }
     }
 }
