@@ -19,8 +19,6 @@ fn main() {
     let insts = parser.insts();
     println!("{insts:?}");
     println!("{:?}", cpu.registers());
-    println!("{:?}", cpu.memory_mut().get(0..20));
-    println!("{:?}", cpu.memory_mut().get(4096 - 1..));
     cpu.execute(insts);
     println!("{:?}", cpu.memory_mut().get(0..20));
     let sp = cpu.registers().get(vm_cpu::registers::Register::SP) as usize;

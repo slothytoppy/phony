@@ -49,30 +49,22 @@ impl<const SIZE: usize> Cpu<SIZE> {
             .set(Register::IP, start_amount as u16 + op.increment_amount());
         match op {
             OpCode::PushReg => {
-                if let Some(code) = bytecode[1] {
-                    let arg = Register::try_from(code).unwrap();
-                    Instruction::PushReg(arg)
-                } else {
-                    panic!()
-                }
+                let arg = bytecode[1];
+                let arg = Register::try_from(arg).unwrap();
+                Instruction::PushReg(arg)
             }
             OpCode::PushVal => {
                 println!("pushing val {bytecode:?}");
-                if let Some(code) = bytecode[1] {
-                    Instruction::PushVal(code)
-                } else {
-                    panic!()
-                }
+                let val = bytecode[1];
+                Instruction::PushVal(val)
             }
             OpCode::MovRegReg => {
                 let (mut left, mut right) = (Register::IP, Register::IP);
                 for (i, code) in bytecode[1..=2].iter().enumerate() {
-                    if let Some(code) = code {
-                        if i == 0 {
-                            left = Register::try_from(code).unwrap();
-                        } else {
-                            right = Register::try_from(code).unwrap();
-                        }
+                    if i == 0 {
+                        left = Register::try_from(code).unwrap();
+                    } else {
+                        right = Register::try_from(code).unwrap();
                     }
                 }
 
@@ -81,12 +73,10 @@ impl<const SIZE: usize> Cpu<SIZE> {
             OpCode::MovRegVal => {
                 let (mut left, mut right) = (Register::IP, 0);
                 for (i, code) in bytecode[1..=2].iter().enumerate() {
-                    if let Some(code) = code {
-                        if i == 0 {
-                            left = Register::try_from(code).unwrap();
-                        } else {
-                            right = *code
-                        }
+                    if i == 0 {
+                        left = Register::try_from(code).unwrap();
+                    } else {
+                        right = *code
                     }
                 }
 
@@ -95,12 +85,10 @@ impl<const SIZE: usize> Cpu<SIZE> {
             OpCode::AddRegReg => {
                 let (mut left, mut right) = (Register::IP, Register::IP);
                 for (i, code) in bytecode[1..=2].iter().enumerate() {
-                    if let Some(code) = code {
-                        if i == 0 {
-                            left = Register::try_from(code).unwrap();
-                        } else {
-                            right = Register::try_from(code).unwrap();
-                        }
+                    if i == 0 {
+                        left = Register::try_from(code).unwrap();
+                    } else {
+                        right = Register::try_from(code).unwrap();
                     }
                 }
 
@@ -109,43 +97,31 @@ impl<const SIZE: usize> Cpu<SIZE> {
             OpCode::AddRegNum => {
                 let (mut left, mut right) = (Register::IP, 0);
                 for (i, code) in bytecode[1..=2].iter().enumerate() {
-                    if let Some(code) = code {
-                        if i == 0 {
-                            left = Register::try_from(code).unwrap();
-                        } else {
-                            right = *code
-                        }
+                    if i == 0 {
+                        left = Register::try_from(code).unwrap();
+                    } else {
+                        right = *code
                     }
                 }
 
                 Instruction::AddRegNum(left, right)
             }
             OpCode::PopReg => {
-                let Some(code) = bytecode[1] else {
-                    panic!();
-                };
+                let reg = bytecode[1];
+                let reg = Register::try_from(reg).unwrap();
 
-                let reg = Register::try_from(code).unwrap();
                 Instruction::PopReg(reg)
             }
-            OpCode::Jump => match bytecode[1] {
-                Some(code) => Instruction::Jump(code),
-                None => {
-                    panic!()
-                }
-            },
+            OpCode::Jump => {
+                let code = bytecode[1];
+                Instruction::Jump(code)
+            }
             OpCode::Call => Instruction::Call,
             OpCode::Halt => Instruction::Halt,
             OpCode::Ret => Instruction::Ret,
             OpCode::Load => {
-                let Some(reg) = bytecode[1] else {
-                    println!("printing left {bytecode:?}");
-                    panic!();
-                };
-                let Some(addr) = bytecode[2] else {
-                    println!("printing right {bytecode:?}");
-                    panic!();
-                };
+                let reg = bytecode[1];
+                let addr = bytecode[2];
                 let Ok(reg) = Register::try_from(reg) else {
                     println!("printing converting {reg:?} to register");
                     panic!();
@@ -160,24 +136,7 @@ impl<const SIZE: usize> Cpu<SIZE> {
         if res.is_err() {
             panic!("{res:?}");
         }
-        loop {
-            match self.memory[self.registers().get(Register::IP)] {
-                Some(code) => {
-                    println!("reading {:?}", code);
-                    let code: OpCode = code.try_into().unwrap();
-                    self.registers.set(
-                        Register::IP,
-                        self.registers.get(Register::IP) + code.increment_amount(),
-                    );
-                }
-                None => {
-                    println!("leaving loop {}", self.registers.get(Register::IP));
 
-                    break;
-                }
-            }
-        }
-        self.registers.set(Register::IP, 0);
         for inst in insts {
             match self.step(inst) {
                 ControlFlow::Continue(_) => {}
@@ -293,9 +252,9 @@ impl<const SIZE: usize> Cpu<SIZE> {
             }
             Instruction::PopReg(register) => {
                 let addr = self.registers.get(Register::SP);
-                let val = self.memory.get(addr as usize).unwrap();
+                let val = self.memory.get(addr as usize);
                 println!("pop reg {addr} {val}");
-                self.registers.set(register, val);
+                self.registers.set(register, *val);
             }
             Instruction::AddRegReg(register, register1) => {
                 println!(
@@ -327,9 +286,7 @@ impl<const SIZE: usize> Cpu<SIZE> {
             Instruction::Ret => return ControlFlow::Break(()),
             Instruction::Load(reg, addr) => {
                 let val = self.memory.get(addr as usize);
-                if let Some(val) = val {
-                    self.registers.set(reg, *val);
-                }
+                self.registers.set(reg, *val);
             }
         }
         ControlFlow::Continue(())
