@@ -49,18 +49,18 @@ macro_rules! op_codes {
 }
 
 op_codes! {
-    MovRegReg = 0,  amount = 3,
-    MovRegVal = 1,  amount = 3,
+    MovRegReg = 1,  amount = 3,
+    MovRegVal = 2,  amount = 3,
     AddRegReg  = 3,  amount = 3,
     AddRegNum  = 4,  amount = 3,
-    Jump       = 6,  amount = 2,
-    PopReg     = 2,  amount = 1,
-    Call       = 5,  amount = 1,
-    Halt       = 7,  amount = 1,
-    Ret        = 8,  amount = 1,
-    Load       = 9,  amount = 3,
-    PushReg = 10, amount = 2,
-    PushVal = 11, amount = 2,
+    Jump       = 5,  amount = 2,
+    PopReg     = 6,  amount = 1,
+    Call       = 7,  amount = 1,
+    Halt       = 8,  amount = 1,
+    Ret        = 9,  amount = 1,
+    Load       = 10,  amount = 3,
+    PushReg = 11, amount = 2,
+    PushVal = 12, amount = 2,
 }
 
 impl From<Instruction> for OpCode {
