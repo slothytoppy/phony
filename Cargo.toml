@@ -1,8 +1,7 @@
 [workspace]
-members = ["vm_cpu", "vm_memory", "vm_assembler"]
+members = ["vm_cpu", "vm_assembler"]
 default-members = ["vm_assembler"]
 resolver = "2"
 
 [workspace.dependencies]
 vm_cpu = { path = "vm_cpu" }
-vm_memory = { path = "vm_memory" }

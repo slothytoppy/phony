@@ -7,16 +7,8 @@ name = "vm_assembler"
 version = "0.1.0"
 dependencies = [
  "vm_cpu",
- "vm_memory",
 ]
 
 [[package]]
 name = "vm_cpu"
-version = "0.1.0"
-dependencies = [
- "vm_memory",
-]
-
-[[package]]
-name = "vm_memory"
 version = "0.1.0"

@@ -1,6 +1,13 @@
 use std::{ops::Index, slice::SliceIndex};
 
-use crate::opcodes::OpCode;
+#[derive(Debug)]
+pub enum Error {
+    MemError,
+    StackOverflow,
+    StackUnderFlow,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct Stack<const SIZE: usize> {
@@ -9,6 +16,7 @@ pub struct Stack<const SIZE: usize> {
 
 impl<const SIZE: usize> Index<u16> for Stack<SIZE> {
     type Output = Option<u16>;
+
     fn index(&self, index: u16) -> &Self::Output {
         if index < SIZE as u16 {
             &self.memory[index as usize]
@@ -31,23 +39,12 @@ impl<const SIZE: usize> Stack<SIZE> {
         Self::default()
     }
 
-    pub fn write(&mut self, address: u16, val: u16) {
-        self.memory[address as usize] = Some(val)
-    }
-
-    pub fn print(&self) {
-        println!("reading memory:");
-        let mut start = 0;
-        for byte in &self.memory[start..] {
-            if let Some(byte) = *byte {
-                println!("byte {byte:?}");
-                let op: Result<OpCode, ()> = byte.try_into();
-                if let Ok(op) = op {
-                    start += op.increment_amount() as usize;
-                    println!("byte {:?}", op)
-                }
-            }
+    pub fn write(&mut self, address: u16, val: u16) -> Result<()> {
+        if address > SIZE as u16 {
+            return Err(Error::MemError);
         }
+        self.memory[address.saturating_sub(1) as usize] = Some(val);
+        Ok(())
     }
 
     pub fn memory(&self) -> &[Option<u16>; SIZE] {

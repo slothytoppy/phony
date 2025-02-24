@@ -49,8 +49,8 @@ macro_rules! op_codes {
 }
 
 op_codes! {
-    PushRegReg = 0,  amount = 3,
-    PushRegVal = 1,  amount = 3,
+    MovRegReg = 0,  amount = 3,
+    MovRegVal = 1,  amount = 3,
     AddRegReg  = 3,  amount = 3,
     AddRegNum  = 4,  amount = 3,
     Jump       = 6,  amount = 2,
@@ -59,13 +59,15 @@ op_codes! {
     Halt       = 7,  amount = 1,
     Ret        = 8,  amount = 1,
     Load       = 9,  amount = 3,
+    PushReg = 10, amount = 2,
+    PushVal = 11, amount = 2,
 }
 
 impl From<Instruction> for OpCode {
     fn from(value: Instruction) -> Self {
         match value {
-            Instruction::PushRegReg(_, _) => Self::PushRegReg,
-            Instruction::PushRegVal(_, _) => Self::PushRegVal,
+            Instruction::MovRegReg(_, _) => Self::MovRegReg,
+            Instruction::MovRegVal(_, _) => Self::MovRegVal,
             Instruction::PopReg(_) => Self::PopReg,
             Instruction::AddRegReg(_, _) => Self::AddRegReg,
             Instruction::AddRegNum(_, _) => Self::AddRegNum,
@@ -74,14 +76,24 @@ impl From<Instruction> for OpCode {
             Instruction::Halt => Self::Halt,
             Instruction::Ret => Self::Ret,
             Instruction::Load(_, _) => Self::Load,
+            Instruction::PushReg(_) => Self::PushReg,
+            Instruction::PushVal(_) => Self::PushVal,
         }
+    }
+}
+
+impl From<&Instruction> for OpCode {
+    fn from(value: &Instruction) -> Self {
+        OpCode::from(*value)
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Instruction {
-    PushRegReg(Register, Register),
-    PushRegVal(Register, u16),
+    MovRegReg(Register, Register),
+    MovRegVal(Register, u16),
+    PushReg(Register),
+    PushVal(u16),
     PopReg(Register),
     AddRegReg(Register, Register),
     AddRegNum(Register, u16),
@@ -95,10 +107,10 @@ pub enum Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Instruction::PushRegReg(register, register1) => {
+            Instruction::MovRegReg(register, register1) => {
                 f.write_str(&format!("Pushing({register1} into {register})"))
             }
-            Instruction::PushRegVal(register, val) => {
+            Instruction::MovRegVal(register, val) => {
                 f.write_str(&format!("Pushing({val} into {register})"))
             }
             Instruction::PopReg(register) => f.write_str(&format!("Popping {register}")),
@@ -113,6 +125,8 @@ impl Display for Instruction {
             Instruction::Halt => f.write_str("Halt"),
             Instruction::Ret => f.write_str("Ret"),
             Instruction::Load(reg, addr) => write!(f, "loading address: {addr} into {reg}"),
+            Instruction::PushReg(reg) => write!(f, "pushing {reg} onto the stack"),
+            Instruction::PushVal(val) => write!(f, "pushing {val} onto the stack"),
         }
     }
 }

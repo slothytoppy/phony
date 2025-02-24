@@ -33,16 +33,9 @@ impl TryFrom<u16> for Register {
 
 impl TryFrom<&u16> for Register {
     type Error = ();
+
     fn try_from(value: &u16) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Register::IP),
-            1 => Ok(Register::R1),
-            2 => Ok(Register::R2),
-            3 => Ok(Register::R3),
-            4 => Ok(Register::R4),
-            5 => Ok(Register::SP),
-            _ => Err(()),
-        }
+        Register::try_from(*value)
     }
 }
 
@@ -85,6 +78,12 @@ impl Default for Registers {
 }
 
 impl Registers {
+    pub fn new(stack_size: u16) -> Self {
+        let mut register = [0; Register::len()];
+        register[Register::SP as usize] = stack_size as usize;
+        Self { register }
+    }
+
     pub fn get(&self, register: Register) -> u16 {
         self.register[register as usize] as u16
     }
