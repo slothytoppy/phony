@@ -84,46 +84,44 @@ impl Parser {
         &self.insts
     }
 
-    pub fn parse(self) -> Result<Self, ParseError> {
-        let mut clone = self;
-        let mut words: Vec<&str> = Vec::new();
+    pub fn parse(mut self) -> Result<Self, ParseError> {
         let mut idx = 0;
-        for line in clone.data.lines() {
-            for word in line.split_whitespace() {
-                words.push(word);
-            }
-        }
-        loop {
-            if idx >= words.len() {
-                break;
-            }
+
+        let words = self
+            .data
+            .lines()
+            .flat_map(|line| line.split_whitespace())
+            .collect::<Vec<_>>();
+
+        while idx < words.len() {
             let word = words[idx];
-            let keyword = clone.get_keyword(word);
-            println!("{word}");
-            println!("{keyword:?}");
+            let keyword = self.get_keyword(word);
+            //println!("{word}");
+            //println!("{keyword:?}");
             let keyword = keyword?;
             let bytecode = &words.get(idx..idx + keyword.increment_amount() as usize);
-            if let Some(code) = bytecode {
-                let args = clone.get_args(&keyword, code);
-                println!("keyword {keyword:?} args {args:?}");
-                if let Some(args) = args {
-                    let inst = clone.args_to_inst(keyword, &args);
-                    match inst {
-                        Some(inst) => clone.insts.push(inst),
-                        None => continue,
-                    }
-                } else {
-                    match keyword {
-                        KeyWord::Ret => clone.insts.push(Instruction::Ret),
-                        KeyWord::Halt => clone.insts.push(Instruction::Halt),
-                        _ => {}
-                    }
+            let Some(bytecode) = bytecode else {
+                break;
+            };
+            let args = self.get_args(&keyword, bytecode);
+            //println!("keyword {keyword:?} args {args:?}");
+            if let Some(args) = args {
+                let inst = self.args_to_inst(keyword, &args);
+                match inst {
+                    Some(inst) => self.insts.push(inst),
+                    None => continue,
                 }
-
-                idx += keyword.increment_amount() as usize;
+            } else {
+                match keyword {
+                    KeyWord::Ret => self.insts.push(Instruction::Ret),
+                    KeyWord::Halt => self.insts.push(Instruction::Halt),
+                    _ => {}
+                }
             }
+
+            idx += keyword.increment_amount() as usize;
         }
-        Ok(clone)
+        Ok(self)
     }
 
     fn get_keyword(&self, word: &str) -> Result<KeyWord, ParseError> {
@@ -266,13 +264,13 @@ impl Parser {
                 Arg::Register(register) => Some(Instruction::PopReg(register)),
                 Arg::U16(num) => panic!("Expected Argument: Register found number {num}"),
             },
-            KeyWord::Ret => None,
-            KeyWord::Halt => None,
+            KeyWord::Ret => Some(Instruction::Ret),
+            KeyWord::Halt => Some(Instruction::Halt),
             KeyWord::Jump => match args[0] {
                 Arg::Register(register) => {
                     panic!("Expected Argument: number found register {register}")
                 }
-                Arg::U16(num) => Some(Instruction::Jump(num)),
+                Arg::U16(num) => Some(Instruction::Jump(num.into())),
             },
             KeyWord::Load => {
                 let reg = match args[0] {
@@ -283,7 +281,7 @@ impl Parser {
                     Arg::Register(register) => {
                         panic!("Expected Argument: address found register: {register}")
                     }
-                    Arg::U16(num) => Some(Instruction::Load(reg, num)),
+                    Arg::U16(num) => Some(Instruction::Load(reg, num.into())),
                 }
             }
             KeyWord::Push => match args[0] {

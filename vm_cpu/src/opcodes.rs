@@ -1,10 +1,15 @@
 use std::fmt::Display;
 
-use crate::registers::Register;
+use crate::{address::Address, registers::Register};
+
+#[derive(Debug)]
+pub enum Error {
+    InvalidOpCode(u16),
+}
 
 macro_rules! op_codes {
     ($($variant:ident = $value:expr, $amount:ident = $arg_amount:literal),* $(,)?) => {
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Clone, Copy, PartialEq)]
         #[repr(u8)]
         #[rustfmt::skip]
         pub enum OpCode {
@@ -20,12 +25,12 @@ macro_rules! op_codes {
         }
 
         impl TryFrom<u16> for OpCode {
-            type Error = ();
+            type Error = Error;
 
-            fn try_from(value: u16) -> Result<OpCode, ()> {
+            fn try_from(value: u16) -> Result<OpCode, Error> {
                 match value {
                     $(x if x == $value => Ok(OpCode::$variant),)*
-                    _v => Err(()),
+                    _v => Err(Error::InvalidOpCode(value)),
                 }
             }
         }
@@ -54,7 +59,7 @@ op_codes! {
     AddRegReg  = 3,  amount = 3,
     AddRegNum  = 4,  amount = 3,
     Jump       = 5,  amount = 2,
-    PopReg     = 6,  amount = 1,
+    PopReg     = 6,  amount = 2,
     Call       = 7,  amount = 1,
     Halt       = 8,  amount = 1,
     Ret        = 9,  amount = 1,
@@ -97,8 +102,8 @@ pub enum Instruction {
     PopReg(Register),
     AddRegReg(Register, Register),
     AddRegNum(Register, u16),
-    Jump(u16),
-    Load(Register, u16),
+    Jump(Address),
+    Load(Register, Address),
     Call,
     Halt,
     Ret,
@@ -121,10 +126,10 @@ impl Display for Instruction {
                 f.write_str(&format!("Adding({val} to {register})"))
             }
             Instruction::Call => f.write_str("Call"),
-            Instruction::Jump(addr) => f.write_str(&format!("Jumping to address {addr:#02x}")),
+            Instruction::Jump(addr) => f.write_str(&format!("Jumping to address {addr:#02x?}")),
             Instruction::Halt => f.write_str("Halt"),
             Instruction::Ret => f.write_str("Ret"),
-            Instruction::Load(reg, addr) => write!(f, "loading address: {addr} into {reg}"),
+            Instruction::Load(reg, addr) => write!(f, "loading address: {addr:?} into {reg}"),
             Instruction::PushReg(reg) => write!(f, "pushing {reg} onto the stack"),
             Instruction::PushVal(val) => write!(f, "pushing {val} onto the stack"),
         }
