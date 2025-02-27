@@ -1,3 +1,3 @@
-pub mod memory;
+pub mod mem;
 
-pub use memory::{Error, Memory};
+pub use mem::{Error, Memory};
