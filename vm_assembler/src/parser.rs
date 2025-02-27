@@ -1,6 +1,4 @@
-use std::ops::Index;
-
-use vm_cpu::{opcodes::Instruction, registers::Register};
+use vm_cpu::{address::Address, opcodes::Instruction, registers::Register};
 
 #[derive(Debug)]
 pub struct Parser {
@@ -43,7 +41,25 @@ macro_rules! keywords {
             }
         }
 
-        impl std::fmt::Display for KeyWord{
+        impl TryFrom<&str> for KeyWord {
+            type Error = ParseError;
+            fn try_from(value: &str) -> Result<Self, Self::Error> {
+                //println!("converting {value}");
+                match value {
+                    "mov" => Ok(KeyWord::Mov),
+                    "add" => Ok(KeyWord::Add),
+                    "pop" => Ok(KeyWord::Pop),
+                    "ret" => Ok(KeyWord::Ret),
+                    "halt" => Ok(KeyWord::Halt),
+                    "jump" => Ok(KeyWord::Jump),
+                    "load" => Ok(KeyWord::Load),
+                    "push" => Ok(KeyWord::Push),
+                    _ => Err(Self::Error::InvalidKeyWord)
+                }
+            }
+        }
+
+        impl std::fmt::Display for KeyWord {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 $(Self::$variant { .. } => f.write_str(stringify!($variant))?,)*
@@ -58,18 +74,41 @@ macro_rules! keywords {
 keywords! {
     Mov, amount = 3,
     Add, amount = 3,
+    Load, amount = 3,
+    Jump, amount = 2,
+    Push, amount = 2,
     Pop, amount = 2,
     Ret, amount = 1,
     Halt, amount = 1,
-    Jump, amount = 2,
-    Load, amount = 3,
-    Push, amount = 2,
 }
 
 #[derive(Debug)]
-enum Arg {
+enum Token {
+    KeyWord(KeyWord),
     Register(Register),
     U16(u16),
+}
+
+impl TryFrom<&str> for Token {
+    type Error = ParseError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.trim().parse::<u16>() {
+            Ok(num) => return Ok(Token::U16(num)),
+            Err(_e) => {}
+        };
+        match value {
+            "r1," => Ok(Token::Register(Register::R1)),
+            "r2," => Ok(Token::Register(Register::R2)),
+            "r3," => Ok(Token::Register(Register::R3)),
+            "r4," => Ok(Token::Register(Register::R4)),
+            _ => {
+                let Ok(keyword) = KeyWord::try_from(value) else {
+                    return Err(ParseError::InvalidKeyWord);
+                };
+                Ok(Token::KeyWord(keyword))
+            }
+        }
+    }
 }
 
 impl Parser {
@@ -84,210 +123,133 @@ impl Parser {
         &self.insts
     }
 
+    fn parse_token(&self, data: &str) -> Result<(Token, usize), ParseError> {
+        for (i, ch) in data.chars().enumerate() {
+            if ch == ' ' {
+                let Some(data) = data.get(0..i) else {
+                    break;
+                };
+                return Ok((Token::try_from(data)?, i));
+            }
+        }
+
+        Ok((Token::try_from(data)?, data.len()))
+    }
+
     pub fn parse(mut self) -> Result<Self, ParseError> {
+        let mut tokens = vec![];
         let mut idx = 0;
+        loop {
+            let res = self.parse_token(&self.data[idx..]);
+            //println!("{res:?}");
+            if idx >= self.data.len() {
+                break;
+            }
+            if let Ok((word, i)) = res {
+                idx += i;
+                tokens.push(word);
+            } else {
+                idx += 1;
+            }
+        }
 
-        let words = self
-            .data
-            .lines()
-            .flat_map(|line| line.split_whitespace())
-            .collect::<Vec<_>>();
+        //println!("tokens {tokens:?}");
 
-        while idx < words.len() {
-            let word = words[idx];
-            let keyword = self.get_keyword(word);
-            //println!("{word}");
-            //println!("{keyword:?}");
-            let keyword = keyword?;
-            let bytecode = &words.get(idx..idx + keyword.increment_amount() as usize);
-            let Some(bytecode) = bytecode else {
+        idx = 0;
+
+        loop {
+            let Some(token) = tokens.get(idx) else {
                 break;
             };
-            let args = self.get_args(&keyword, bytecode);
-            //println!("keyword {keyword:?} args {args:?}");
-            if let Some(args) = args {
-                let inst = self.args_to_inst(keyword, &args);
-                match inst {
-                    Some(inst) => self.insts.push(inst),
-                    None => continue,
-                }
+            if let Token::KeyWord(key_word) = token {
+                let Some(code) = tokens.get(idx + 1..idx + key_word.increment_amount() as usize)
+                else {
+                    return Err(ParseError::InvalidArgument(InvalidArgument::Number));
+                };
+                println!("keyword {key_word:?} code {code:?}");
+                assert!(code.len() == key_word.increment_amount().saturating_sub(1).into());
+                let inst = match key_word {
+                    KeyWord::Mov => {
+                        let reg = match &code[0] {
+                            Token::KeyWord(keyword) => {
+                                panic!("Should be Register not KeyWord {keyword}")
+                            }
+                            Token::Register(register) => register,
+                            Token::U16(_) => panic!("Should be Register not U16"),
+                        };
+                        match &code[1] {
+                            Token::KeyWord(keyword) => {
+                                panic!("Should be Register not KeyWord {keyword}")
+                            }
+                            Token::Register(register) => Instruction::MovRegReg(*reg, *register),
+                            Token::U16(val) => Instruction::MovRegVal(*reg, *val),
+                        }
+                    }
+                    KeyWord::Add => {
+                        let reg = match &code[0] {
+                            Token::KeyWord(_) => {
+                                panic!("Should be Register not KeyWord")
+                            }
+                            Token::Register(register) => register,
+                            Token::U16(_) => panic!("Should be Register not U16"),
+                        };
+                        match &code[1] {
+                            Token::KeyWord(_) => {
+                                panic!("Should be Register not KeyWord")
+                            }
+                            Token::Register(register) => Instruction::AddRegReg(*reg, *register),
+                            Token::U16(val) => Instruction::AddRegNum(*reg, *val),
+                        }
+                    }
+                    KeyWord::Pop => match &code[0] {
+                        Token::KeyWord(_) => {
+                            panic!("Should be Register not KeyWord")
+                        }
+                        Token::Register(register) => Instruction::PopReg(*register),
+                        Token::U16(_) => panic!("Should be Register not U16"),
+                    },
+                    KeyWord::Jump => match &code[0] {
+                        Token::KeyWord(_) => {
+                            panic!("Should be Register not KeyWord")
+                        }
+                        Token::Register(register) => Instruction::PopReg(*register),
+                        Token::U16(_) => panic!("Should be Register not U16"),
+                    },
+                    KeyWord::Load => {
+                        let reg = match &code[0] {
+                            Token::KeyWord(_) => {
+                                panic!("Should be Register not KeyWord")
+                            }
+                            Token::Register(register) => register,
+                            Token::U16(_) => panic!("Should be Register not U16"),
+                        };
+                        match &code[1] {
+                            Token::KeyWord(_) => {
+                                panic!("Should be Register not KeyWord")
+                            }
+                            Token::Register(_) => {
+                                panic!("Should be U16 not Register")
+                            }
+                            Token::U16(val) => Instruction::Load(*reg, Address::from(*val)),
+                        }
+                    }
+                    KeyWord::Push => match &code[0] {
+                        Token::KeyWord(keyword) => {
+                            panic!("Should be Register not KeyWord {keyword}")
+                        }
+                        Token::Register(register) => Instruction::PushReg(*register),
+                        Token::U16(val) => Instruction::PushVal(*val),
+                    },
+                    KeyWord::Ret => Instruction::Ret,
+                    KeyWord::Halt => Instruction::Halt,
+                };
+                idx += key_word.increment_amount() as usize;
+                self.insts.push(inst);
             } else {
-                match keyword {
-                    KeyWord::Ret => self.insts.push(Instruction::Ret),
-                    KeyWord::Halt => self.insts.push(Instruction::Halt),
-                    _ => {}
-                }
+                panic!()
             }
-
-            idx += keyword.increment_amount() as usize;
         }
+
         Ok(self)
-    }
-
-    fn get_keyword(&self, word: &str) -> Result<KeyWord, ParseError> {
-        match word {
-            "mov" => Ok(KeyWord::Mov),
-            "pop" => Ok(KeyWord::Pop),
-            "push" => Ok(KeyWord::Push),
-            "jump" => Ok(KeyWord::Jump),
-            "halt" => Ok(KeyWord::Halt),
-            "ret" => Ok(KeyWord::Ret),
-            "load" => Ok(KeyWord::Load),
-            "add" => Ok(KeyWord::Add),
-            _ => Err(ParseError::InvalidKeyWord),
-        }
-    }
-
-    fn get_arg(&self, bytecode: &str) -> Option<Arg> {
-        let arg = bytecode;
-        let arg = {
-            let idx = arg.find(',');
-            if let Some(idx) = idx {
-                arg.index(0..idx)
-            } else {
-                arg
-            }
-        };
-        match arg {
-            "r1" => Some(Arg::Register(Register::R1)),
-            "r2" => Some(Arg::Register(Register::R2)),
-            "r3" => Some(Arg::Register(Register::R3)),
-            "r4" => Some(Arg::Register(Register::R4)),
-            _ => {
-                //println!("arg {arg:?}");
-                match arg.parse::<u16>() {
-                    Ok(num) => Some(Arg::U16(num)),
-                    Err(e) => {
-                        println!("{e:?} {arg}");
-                        None
-                    }
-                }
-            }
-        }
-    }
-
-    fn get_args(&self, word: &KeyWord, bytecode: &[&str]) -> Option<Vec<Arg>> {
-        let mut vec = Vec::new();
-        match word {
-            KeyWord::Mov => {
-                let left = self.get_arg(bytecode[1])?;
-                match left {
-                    Arg::Register(_) => vec.push(left),
-                    Arg::U16(_) => panic!(),
-                }
-                let right = self.get_arg(bytecode[2])?;
-
-                vec.push(right);
-            }
-            KeyWord::Add => {
-                let left = self.get_arg(bytecode[1])?;
-                match left {
-                    Arg::Register(_) => vec.push(left),
-                    Arg::U16(_) => {
-                        panic!("{}", ParseError::InvalidArgument(InvalidArgument::Number))
-                    }
-                }
-                let right = self.get_arg(bytecode[2])?;
-
-                vec.push(right);
-            }
-            KeyWord::Pop => {
-                let arg = self.get_arg(bytecode[1])?;
-                match arg {
-                    Arg::Register(_register) => vec.push(arg),
-                    Arg::U16(_) => {
-                        panic!("{}", ParseError::InvalidArgument(InvalidArgument::Number))
-                    }
-                }
-            }
-            KeyWord::Ret => return None,
-            KeyWord::Halt => return None,
-            KeyWord::Jump => {
-                let arg = self.get_arg(bytecode[1]);
-                if let Some(arg) = arg {
-                    match arg {
-                        Arg::U16(_addr) => {
-                            vec.push(arg);
-                        }
-                        Arg::Register(_reg) => {
-                            panic!("{}", ParseError::InvalidArgument(InvalidArgument::Register))
-                        }
-                    }
-                }
-            }
-            KeyWord::Load => {
-                let (left, right) = (self.get_arg(bytecode[1])?, self.get_arg(bytecode[2])?);
-                match left {
-                    Arg::Register(_register) => vec.push(left),
-                    Arg::U16(_) => {
-                        panic!("{}", ParseError::InvalidArgument(InvalidArgument::Number))
-                    }
-                }
-                match right {
-                    Arg::Register(_register) => {
-                        panic!("{}", ParseError::InvalidArgument(InvalidArgument::Register))
-                    }
-                    Arg::U16(_addr) => vec.push(right),
-                }
-            }
-            KeyWord::Push => {
-                let arg = self.get_arg(bytecode[1])?;
-                vec.push(arg);
-            }
-        }
-        Some(vec)
-    }
-
-    fn args_to_inst(&self, keyword: KeyWord, args: &[Arg]) -> Option<Instruction> {
-        match keyword {
-            KeyWord::Mov => {
-                let reg = match args[0] {
-                    Arg::Register(reg) => reg,
-                    Arg::U16(num) => panic!("Expected Argument: Register found number: {num}"),
-                };
-                match args[1] {
-                    Arg::Register(register) => Some(Instruction::MovRegReg(reg, register)),
-                    Arg::U16(num) => Some(Instruction::MovRegVal(reg, num)),
-                }
-            }
-            KeyWord::Add => {
-                let reg = match args[0] {
-                    Arg::Register(reg) => reg,
-                    Arg::U16(num) => panic!("Expected Argument: Register found number: {num}"),
-                };
-                match args[1] {
-                    Arg::Register(register) => Some(Instruction::AddRegReg(reg, register)),
-                    Arg::U16(num) => Some(Instruction::AddRegNum(reg, num)),
-                }
-            }
-            KeyWord::Pop => match args[0] {
-                Arg::Register(register) => Some(Instruction::PopReg(register)),
-                Arg::U16(num) => panic!("Expected Argument: Register found number {num}"),
-            },
-            KeyWord::Ret => Some(Instruction::Ret),
-            KeyWord::Halt => Some(Instruction::Halt),
-            KeyWord::Jump => match args[0] {
-                Arg::Register(register) => {
-                    panic!("Expected Argument: number found register {register}")
-                }
-                Arg::U16(num) => Some(Instruction::Jump(num.into())),
-            },
-            KeyWord::Load => {
-                let reg = match args[0] {
-                    Arg::Register(reg) => reg,
-                    Arg::U16(num) => panic!("Expected Argument: Register found number: {num}"),
-                };
-                match args[1] {
-                    Arg::Register(register) => {
-                        panic!("Expected Argument: address found register: {register}")
-                    }
-                    Arg::U16(num) => Some(Instruction::Load(reg, num.into())),
-                }
-            }
-            KeyWord::Push => match args[0] {
-                Arg::Register(register) => Some(Instruction::PushReg(register)),
-                Arg::U16(val) => Some(Instruction::PushVal(val)),
-            },
-        }
     }
 }

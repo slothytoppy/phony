@@ -1,7 +1,7 @@
 use parser::Parser;
 use vm_cpu::{
     address::Address,
-    memory::{memory, Memory},
+    memory::{self, Memory},
     stack::Stack,
 };
 
@@ -54,18 +54,20 @@ mod test {
         mov r3, 40 
         mov r4, 40 
         push 10
-        load r1, 57535
+        load r1, 57535 
         halt
         "#;
 
         let parser = Parser::new(asm).parse().unwrap();
         let mem = Stack::<65535>::new();
         let mut cpu = vm_cpu::cpu::Cpu::new(mem, 0, u16::MAX - 8000);
+        println!("instructions: {:?}", parser.insts());
         cpu.write_instructions_to_memory(parser.insts())?;
+        println!("memory {:?}", cpu.memory().get(0, 20));
         cpu.execute();
 
         println!("reg {:?}", cpu.registers());
-        assert!(cpu.registers().as_slice() == &[17, 10, 40, 40, 40, cpu.registers()[Register::SP]]);
+        assert!(cpu.registers().as_slice() == &[18, 10, 40, 40, 40, cpu.registers()[Register::SP]]);
         Ok(())
     }
 }
