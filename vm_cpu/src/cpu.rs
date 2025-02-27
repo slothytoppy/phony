@@ -2,6 +2,7 @@ use std::{fmt::Debug, ops::ControlFlow};
 
 use crate::{
     address::Address,
+    error::Error,
     memory::{self, Memory},
     opcodes::{Instruction, OpCode},
     registers::{Register, Registers},
@@ -36,7 +37,6 @@ impl<M: Memory> Cpu<M> {
 
     pub fn next_instruction(&mut self, op: OpCode) -> Result<Instruction, memory::Error> {
         let start_amount = self.registers.get(Register::IP) as usize;
-        //println!("starting at {start_amount}");
         let bytecode = self.memory.get(
             Address::from(start_amount as u16),
             (start_amount as u16 + op.increment_amount()).into(),
@@ -50,7 +50,6 @@ impl<M: Memory> Cpu<M> {
                 Ok(Instruction::PushReg(arg))
             }
             OpCode::PushVal => {
-                //println!("pushing val {bytecode:?}");
                 let val = bytecode[1];
                 Ok(Instruction::PushVal(val))
             }
@@ -124,7 +123,13 @@ impl<M: Memory> Cpu<M> {
 
     pub fn execute(&mut self) -> ControlFlow<(), ()> {
         loop {
-            self.step()?
+            let Ok(flow) = self.step() else {
+                panic!();
+            };
+            match flow {
+                ControlFlow::Continue(_) => continue,
+                ControlFlow::Break(_) => return ControlFlow::Break(()),
+            };
         }
     }
 
@@ -133,62 +138,58 @@ impl<M: Memory> Cpu<M> {
         let mut ip_addr = Address::from(ip);
         self.memory.write(ip_addr, OpCode::from(inst))?;
         ip_addr = ip_addr.next()?;
-        //println!("idx {ip_addr}");
         match inst {
             Instruction::MovRegReg(register, register1) => {
                 self.memory.write(ip_addr, self.registers.get(*register))?;
                 ip_addr = ip_addr.next()?;
                 self.memory.write(ip_addr, self.registers.get(*register1))?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::MovRegVal(register, val) => {
                 self.memory.write(ip_addr, *register)?;
                 ip_addr = ip_addr.next()?;
                 self.memory.write(ip_addr, *val)?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::PushReg(register) => {
                 self.memory.write(ip_addr, self.registers.get(*register))?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::PushVal(val) => {
                 self.memory.write(ip_addr, *val)?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::PopReg(register) => {
                 self.memory.write(ip_addr, self.registers.get(*register))?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::AddRegReg(register, register1) => {
                 self.memory.write(ip_addr, self.registers.get(*register))?;
                 ip_addr = ip_addr.next()?;
                 self.memory.write(ip_addr, self.registers.get(*register1))?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::AddRegNum(register, val) => {
                 self.memory.write(ip_addr, self.registers.get(*register))?;
                 ip_addr = ip_addr.next()?;
                 self.memory.write(ip_addr, *val)?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::Jump(address) => {
                 self.memory.write(ip_addr, *address)?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::Load(register, address) => {
                 self.memory.write(ip_addr, *register)?;
                 ip_addr = ip_addr.next()?;
                 self.memory.write(ip_addr, *address)?;
-                ip_addr = ip_addr.next()?;
+                _ = ip_addr.next()?;
             }
             Instruction::Call => {}
             Instruction::Halt => {}
             Instruction::Ret => {}
         }
-        //println!("ip {:?}", self.registers[Register::IP]..ip_addr.into());
         self.registers[Register::IP] += OpCode::from(inst).increment_amount();
-        //let ip_addr: u16 = ip_addr.into();
-        //println!("memory {:?}", self.memory.get(0, ip_addr));
         Ok(())
     }
 
@@ -217,46 +218,40 @@ impl<M: Memory> Cpu<M> {
         Ok(())
     }
 
-    pub fn step(&mut self) -> ControlFlow<(), ()> {
-        let byte = self
-            .memory
-            .read(self.registers().get(Register::IP))
-            .unwrap();
-        let code = OpCode::try_from(byte).unwrap();
-        let ip = self.registers().get(Register::IP);
-        let bytecode = self
-            .memory
-            .get(ip + 1, ip + code.increment_amount())
-            .unwrap();
-        match code {
-            OpCode::MovRegReg => todo!(),
-            OpCode::MovRegVal => {
-                let (reg, val) = (Register::try_from(bytecode[0]), bytecode[1]);
-                let reg = reg.unwrap();
-                self.registers[reg] = val;
+    pub fn step(&mut self) -> Result<ControlFlow<(), ()>, Error> {
+        let byte = self.memory.read(self.registers().get(Register::IP))?;
+
+        println!(
+            "converting {byte} to opcode ip {}",
+            self.registers[Register::IP]
+        );
+
+        let code = OpCode::try_from(byte)?;
+        let inst = self.next_instruction(code)?;
+
+        match inst {
+            Instruction::MovRegReg(register, register1) => {
+                self.registers[register] = self.registers.get(register1);
             }
-            OpCode::AddRegReg => todo!(),
-            OpCode::AddRegNum => todo!(),
-            OpCode::Jump => todo!(),
-            OpCode::PopReg => todo!(),
-            OpCode::Call => todo!(),
-            OpCode::Halt => return ControlFlow::Break(()),
-            OpCode::Ret => return ControlFlow::Break(()),
-            OpCode::Load => {
-                println!("bytecode {bytecode:?}");
-                let (reg, addr) = (Register::try_from(bytecode[0]), bytecode[1]);
-                let reg = reg.unwrap();
-                let val = self.memory.read(addr).unwrap();
-                self.registers[reg] = val;
+            Instruction::MovRegVal(register, val) => self.registers[register] = val,
+            Instruction::PushReg(register) => self.push_stack(self.registers.get(register))?,
+            Instruction::PushVal(val) => self.push_stack(val)?,
+            Instruction::PopReg(register) => self.pop_stack(register)?,
+            Instruction::AddRegReg(register, register1) => {
+                self.registers[register] += self.registers.get(register1)
             }
-            OpCode::PushReg => todo!(),
-            OpCode::PushVal => {
-                let val = bytecode[0];
-                self.push_stack(val).unwrap();
+            Instruction::AddRegNum(register, val) => self.registers[register] += val,
+            Instruction::Jump(address) => {
+                self.registers[Register::IP] = address.into();
+                return Ok(ControlFlow::Continue(()));
             }
-        };
-        let amount = self.registers.get(Register::IP) + code.increment_amount();
-        self.registers.set(Register::IP, amount);
-        ControlFlow::Continue(())
+            Instruction::Load(register, address) => {
+                self.registers[register] = self.memory.read(address)?
+            }
+            Instruction::Call => todo!(),
+            Instruction::Halt => return Ok(ControlFlow::Break(())),
+            Instruction::Ret => return Ok(ControlFlow::Break(())),
+        }
+        Ok(ControlFlow::Continue(()))
     }
 }
