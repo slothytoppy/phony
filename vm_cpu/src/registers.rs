@@ -1,11 +1,13 @@
 use std::{
     fmt::Display,
     ops::{Index, IndexMut},
+    str::FromStr,
 };
 
 #[derive(Debug)]
 pub enum Error {
     InvalidRegister(u16),
+    InvalidConversion(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,12 +17,36 @@ pub enum Register {
     R2,
     R3,
     R4,
+    R5,
+    R6,
+    R7,
+    R8,
     SP,
+}
+
+impl FromStr for Register {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ip" => Ok(Self::IP),
+            "r1" => Ok(Self::R1),
+            "r2" => Ok(Self::R2),
+            "r3" => Ok(Self::R3),
+            "r4" => Ok(Self::R4),
+            "r5" => Ok(Self::R5),
+            "r6" => Ok(Self::R6),
+            "r7" => Ok(Self::R7),
+            "r8" => Ok(Self::R8),
+            "sp" => Ok(Self::SP),
+            _ => Err(Error::InvalidConversion(s.to_string())),
+        }
+    }
 }
 
 impl Register {
     pub const fn len() -> usize {
-        6
+        10
     }
 }
 
@@ -39,7 +65,11 @@ impl TryFrom<u16> for Register {
             2 => Ok(Register::R2),
             3 => Ok(Register::R3),
             4 => Ok(Register::R4),
-            5 => Ok(Register::SP),
+            6 => Ok(Register::R5),
+            7 => Ok(Register::R6),
+            8 => Ok(Register::R7),
+            9 => Ok(Register::R8),
+            10 => Ok(Register::SP),
             _ => Err(Error::InvalidRegister(value)),
         }
     }
@@ -55,27 +85,28 @@ impl TryFrom<&u16> for Register {
 
 impl Display for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Register::IP => f.write_str("IP"),
-            Register::R1 => f.write_str("R1"),
-            Register::R2 => f.write_str("R2"),
-            Register::R3 => f.write_str("R3"),
-            Register::R4 => f.write_str("R4"),
-            Register::SP => f.write_str("SP"),
-        }
+        write!(f, "{self:?}")
     }
 }
 
 #[derive(Debug)]
 pub struct Registers([u16; Register::len()]);
 
+impl Default for Registers {
+    fn default() -> Self {
+        let mut register = [0_u16; Register::len()];
+        register[Register::SP as usize] = u16::MAX;
+        Self(register)
+    }
+}
+
 impl Registers {
     pub fn new(program_start: u16, stack_start: u16) -> Self {
-        println!("stack_start = {stack_start}");
-        let mut register = [0; Register::len()];
-        register[Register::IP as usize] = program_start;
-        register[Register::SP as usize] = stack_start;
-        Self(register)
+        let mut registers = Self::default();
+        registers.0[Register::IP as usize] = program_start;
+        registers.0[Register::SP as usize] = stack_start;
+
+        registers
     }
 
     pub fn get(&self, register: Register) -> u16 {
@@ -88,14 +119,6 @@ impl Registers {
 
     pub fn as_slice(&self) -> &[u16; Register::len()] {
         &self.0
-    }
-}
-
-impl Default for Registers {
-    fn default() -> Self {
-        let mut register = [0_u16; Register::len()];
-        register[Register::SP as usize] = u16::MAX;
-        Self(register)
     }
 }
 
