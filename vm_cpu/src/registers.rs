@@ -39,7 +39,7 @@ impl FromStr for Register {
             "r7" => Ok(Self::R7),
             "r8" => Ok(Self::R8),
             "sp" => Ok(Self::SP),
-            _ => Err(Error::InvalidConversion(s.to_string())),
+            _ => Err(Self::Err::InvalidConversion(s.to_string())),
         }
     }
 }

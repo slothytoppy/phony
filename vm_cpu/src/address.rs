@@ -37,22 +37,6 @@ impl Address {
     }
 }
 
-impl std::ops::Add for Address {
-    type Output = Address;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Address(self.0 + rhs.0)
-    }
-}
-
-impl std::ops::Sub for Address {
-    type Output = Address;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Address(self.0 - rhs.0)
-    }
-}
-
 impl std::fmt::Display for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")

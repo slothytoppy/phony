@@ -49,10 +49,7 @@ impl<M: Memory> Cpu<M> {
                 let arg = Register::try_from(arg).unwrap();
                 Ok(Instruction::PushReg(arg))
             }
-            OpCode::PushVal => {
-                let val = bytecode[1];
-                Ok(Instruction::PushVal(val))
-            }
+            OpCode::PushVal => Ok(Instruction::PushVal(bytecode[1])),
             OpCode::MovRegReg => {
                 println!("{bytecode:?}");
                 let left = Register::try_from(bytecode[1]).unwrap();
@@ -94,7 +91,7 @@ impl<M: Memory> Cpu<M> {
                     }
                 }
 
-                Ok(Instruction::AddRegNum(left, right))
+                Ok(Instruction::AddRegVal(left, right))
             }
             OpCode::PopReg => {
                 let reg = bytecode[1];
@@ -102,11 +99,12 @@ impl<M: Memory> Cpu<M> {
 
                 Ok(Instruction::PopReg(reg))
             }
-            OpCode::Jump => {
-                let code = bytecode[1];
-                Ok(Instruction::Jump(code.into()))
-            }
+            OpCode::Jump => Ok(Instruction::Jump(bytecode[1].into())),
             OpCode::Call => Ok(Instruction::Call),
+            OpCode::CallAddr => {
+                let addr = bytecode[1];
+                Ok(Instruction::CallAddr(Address::from(addr)))
+            }
             OpCode::Halt => Ok(Instruction::Halt),
             OpCode::Ret => Ok(Instruction::Ret),
             OpCode::Load => {
@@ -123,12 +121,12 @@ impl<M: Memory> Cpu<M> {
 
     pub fn execute(&mut self) -> ControlFlow<(), ()> {
         loop {
-            let Ok(flow) = self.step() else {
-                panic!();
-            };
-            match flow {
-                ControlFlow::Continue(_) => continue,
-                ControlFlow::Break(_) => return ControlFlow::Break(()),
+            match self.step() {
+                Ok(flow) => match flow {
+                    ControlFlow::Continue(_) => continue,
+                    ControlFlow::Break(_) => return ControlFlow::Break(()),
+                },
+                Err(e) => panic!("{e:?}"),
             };
         }
     }
@@ -169,7 +167,7 @@ impl<M: Memory> Cpu<M> {
                 self.memory.write(ip_addr, self.registers.get(*register1))?;
                 _ = ip_addr.next()?;
             }
-            Instruction::AddRegNum(register, val) => {
+            Instruction::AddRegVal(register, val) => {
                 self.memory.write(ip_addr, self.registers.get(*register))?;
                 ip_addr = ip_addr.next()?;
                 self.memory.write(ip_addr, *val)?;
@@ -185,7 +183,13 @@ impl<M: Memory> Cpu<M> {
                 self.memory.write(ip_addr, *address)?;
                 _ = ip_addr.next()?;
             }
-            Instruction::Call => {}
+            Instruction::Call => {
+                todo!()
+            }
+            Instruction::CallAddr(address) => {
+                self.memory.write(ip_addr, *address)?;
+                ip_addr.next()?;
+            }
             Instruction::Halt => {}
             Instruction::Ret => {}
         }
@@ -204,35 +208,29 @@ impl<M: Memory> Cpu<M> {
 
     fn push_stack(&mut self, val: u16) -> stack::Result<()> {
         let sp = self.registers()[Register::SP];
-        println!("attempting to write {val} to {sp}");
         self.memory.write(Address::from(sp), val)?;
-        println!("sp = {sp}");
-        self.registers[Register::SP] = sp + 1;
+        self.registers[Register::SP] = sp - 1;
         Ok(())
     }
 
     fn pop_stack(&mut self, reg: Register) -> stack::Result<()> {
-        let sp = self.registers().get(Register::SP);
+        let sp = self.registers()[Register::SP];
         self.registers.set(reg, self.memory.read(sp)?);
-        self.registers.set(Register::SP, sp - 1);
+        self.registers.set(Register::SP, sp + 1);
         Ok(())
     }
 
     pub fn step(&mut self) -> Result<ControlFlow<(), ()>, Error> {
-        let byte = self.memory.read(self.registers().get(Register::IP))?;
-
-        println!(
-            "converting {byte} to opcode ip {}",
-            self.registers[Register::IP]
-        );
+        let byte = self.memory.read(self.registers()[Register::IP])?;
 
         let code = OpCode::try_from(byte)?;
         let inst = self.next_instruction(code)?;
 
         match inst {
             Instruction::MovRegReg(register, register1) => {
-                self.registers[register] = self.registers.get(register1);
+                self.registers[register] = self.registers.get(register1)
             }
+
             Instruction::MovRegVal(register, val) => self.registers[register] = val,
             Instruction::PushReg(register) => self.push_stack(self.registers.get(register))?,
             Instruction::PushVal(val) => self.push_stack(val)?,
@@ -240,17 +238,16 @@ impl<M: Memory> Cpu<M> {
             Instruction::AddRegReg(register, register1) => {
                 self.registers[register] += self.registers.get(register1)
             }
-            Instruction::AddRegNum(register, val) => self.registers[register] += val,
-            Instruction::Jump(address) => {
-                self.registers[Register::IP] = address.into();
-                return Ok(ControlFlow::Continue(()));
-            }
+
+            Instruction::AddRegVal(register, val) => self.registers[register] += val,
+            Instruction::Jump(address) => self.registers[Register::IP] = address.into(),
             Instruction::Load(register, address) => {
                 self.registers[register] = self.memory.read(address)?
             }
             Instruction::Call => todo!(),
+            Instruction::CallAddr(_) => todo!(),
             Instruction::Halt => return Ok(ControlFlow::Break(())),
-            Instruction::Ret => return Ok(ControlFlow::Break(())),
+            Instruction::Ret => {} // where should the return address be
         }
         Ok(ControlFlow::Continue(()))
     }

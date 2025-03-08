@@ -61,11 +61,12 @@ op_codes! {
     Jump       = 5,  amount = 2,
     PopReg     = 6,  amount = 2,
     Call       = 7,  amount = 1,
-    Halt       = 8,  amount = 1,
-    Ret        = 9,  amount = 1,
-    Load       = 10,  amount = 3,
-    PushReg = 11, amount = 2,
-    PushVal = 12, amount = 2,
+    CallAddr   = 8, amount = 2,
+    Halt       = 9,  amount = 1,
+    Ret        = 10,  amount = 1,
+    Load       = 11,  amount = 3,
+    PushReg = 12, amount = 2,
+    PushVal = 13, amount = 2,
 }
 
 impl From<Instruction> for OpCode {
@@ -75,8 +76,9 @@ impl From<Instruction> for OpCode {
             Instruction::MovRegVal(_, _) => Self::MovRegVal,
             Instruction::PopReg(_) => Self::PopReg,
             Instruction::AddRegReg(_, _) => Self::AddRegReg,
-            Instruction::AddRegNum(_, _) => Self::AddRegNum,
+            Instruction::AddRegVal(_, _) => Self::AddRegNum,
             Instruction::Call => Self::Call,
+            Instruction::CallAddr(_) => Self::CallAddr,
             Instruction::Jump(_) => Self::Jump,
             Instruction::Halt => Self::Halt,
             Instruction::Ret => Self::Ret,
@@ -101,10 +103,11 @@ pub enum Instruction {
     PushVal(u16),
     PopReg(Register),
     AddRegReg(Register, Register),
-    AddRegNum(Register, u16),
+    AddRegVal(Register, u16),
     Jump(Address),
     Load(Register, Address),
-    Call,
+    Call, // reserved: for future implementation of a syscall like feature
+    CallAddr(Address),
     Halt,
     Ret,
 }
@@ -113,20 +116,21 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Instruction::MovRegReg(register, register1) => {
-                f.write_str(&format!("Pushing({register1} into {register})"))
+                write!(f, "Pushing({register1} into {register})")
             }
             Instruction::MovRegVal(register, val) => {
-                f.write_str(&format!("Pushing({val} into {register})"))
+                write!(f, "Pushing({val} into {register})")
             }
-            Instruction::PopReg(register) => f.write_str(&format!("Popping {register}")),
+            Instruction::PopReg(register) => write!(f, "Popping {register}"),
             Instruction::AddRegReg(register, register1) => {
-                f.write_str(&format!("Adding({register} and {register1})"))
+                write!(f, "Adding({register} and {register1})")
             }
-            Instruction::AddRegNum(register, val) => {
-                f.write_str(&format!("Adding({val} to {register})"))
+            Instruction::AddRegVal(register, val) => {
+                write!(f, "Adding({val} to {register})")
             }
-            Instruction::Call => f.write_str("Call"),
-            Instruction::Jump(addr) => f.write_str(&format!("Jumping to address {addr:#02x?}")),
+            Instruction::Call => write!(f, "Calling"),
+            Instruction::CallAddr(address) => write!(f, "Calling {address:?}"),
+            Instruction::Jump(addr) => write!(f, "Jumping to address {addr:#02x?}"),
             Instruction::Halt => f.write_str("Halt"),
             Instruction::Ret => f.write_str("Ret"),
             Instruction::Load(reg, addr) => write!(f, "loading address: {addr:?} into {reg}"),
