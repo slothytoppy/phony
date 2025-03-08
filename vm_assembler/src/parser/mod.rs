@@ -1,7 +1,12 @@
 #[macro_use]
 mod macros;
+
+mod error;
 mod tests;
+mod tokens;
 
-pub mod parser;
+mod parser;
 
-pub use parser::{ParseError, Parser};
+pub use error::ParseError;
+pub use parser::Parser;
+pub use tokens::{KeyWord, Token};

@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod test {
-
     use vm_cpu::{
         memory::{self, Memory},
         registers::Register,
@@ -36,61 +35,59 @@ mod test {
     #[test]
     fn basic_asm() -> Result<(), Error> {
         let asm = r#"
-        mov r1, r1
+        mov r1, 40
         mov r2, 40 
         mov r3, 40 
         mov r4, 40 
-        push 10
-        load r1, 57535 
         halt
         "#;
 
         let parser: Parser = asm.parse()?;
-        println!("parser {:#?}", parser.tokens());
-        //let mut mem = Stack::<65535>::new();
-        //parser.write_instructions_to_memory(&mut mem)?;
-        //let mut cpu = vm_cpu::cpu::Cpu::new(mem, 0, u16::MAX - 8000);
-        //println!("instructions: {:?}", parser.symbols());
-        //println!("memory {:?}", cpu.memory().get(0, 20));
-        //cpu.execute();
-        //
-        //println!("reg {:?}", cpu.registers());
-        //assert!(
-        //    cpu.registers().as_slice()
-        //        == &[
-        //            18,
-        //            10,
-        //            40,
-        //            40,
-        //            40,
-        //            0,
-        //            0,
-        //            0,
-        //            0,
-        //            cpu.registers()[Register::SP]
-        //        ]
-        //);
+        println!("parser {:?}", parser.insts());
+        let mut mem = Stack::<65535>::new();
+        parser::parser::write_instructions_to_memory(&mut mem, parser.insts())?;
+        let mut cpu = vm_cpu::cpu::Cpu::new(mem, 0, u16::MAX - 8000);
+        println!("instructions: {:?}", parser.insts());
+        println!("memory {:?}", cpu.memory().get(0, 20));
+        cpu.execute();
+
+        println!("reg {:?}", cpu.registers());
+        assert!(
+            cpu.registers().as_slice()
+                == &[
+                    cpu.registers()[Register::IP],
+                    40,
+                    40,
+                    40,
+                    40,
+                    0,
+                    0,
+                    0,
+                    0,
+                    cpu.registers()[Register::SP]
+                ]
+        );
         Ok(())
     }
 
     #[test]
-    fn label_test() -> Result<(), Error> {
+    fn label() -> Result<(), Error> {
         let asm = r#"
         bai:
         load r1, 57535 
         halt
-        hai:
         load r1, 200
+        call bai
         "#;
 
         let parser: Parser = asm.parse()?;
-        //println!("insts {:?}", parser.symbols());
-        //let mut stack = Stack::<{ u16::MAX as usize }>::new();
-        //parser.write_instructions_to_memory(&mut stack)?;
-        //let mut cpu = vm_cpu::cpu::Cpu::new(stack, 0, u16::MAX);
-        //println!("mem {:?}", cpu.memory().get(0, 20)?);
-        //cpu.execute();
-        //println!("{:?}", cpu.registers());
+        println!("insts {:?}", parser.insts());
+        let mut stack = Stack::<{ u16::MAX as usize }>::new();
+        parser::parser::write_instructions_to_memory(&mut stack, parser.insts())?;
+        let mut cpu = vm_cpu::cpu::Cpu::new(stack, 0, u16::MAX);
+        println!("mem {:?}", cpu.memory().get(0, 20)?);
+        cpu.execute();
+        println!("{:?}", cpu.registers());
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 macro_rules! keywords {
     ($($variant:ident, $amount:ident = $arg_amount:literal),* $(,)?) => {
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u8)]
         #[rustfmt::skip]
         pub enum KeyWord {
@@ -17,6 +17,7 @@ macro_rules! keywords {
 
         impl FromStr for KeyWord {
             type Err = ParseError;
+
             fn from_str(value: &str) -> Result<Self, Self::Err> {
                 match value {
                     "mov" => Ok(KeyWord::Mov),
@@ -28,7 +29,8 @@ macro_rules! keywords {
                     "load" => Ok(KeyWord::Load),
                     "push" => Ok(KeyWord::Push),
                     "call" => Ok(KeyWord::Call),
-                    _ => Err(Self::Err::InvalidKeyWord)
+
+                    _ => Err(Self::Err::InvalidKeyWord(value.to_string()))
                 }
             }
         }
