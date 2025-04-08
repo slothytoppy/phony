@@ -7,6 +7,7 @@ pub enum ParseError {
     InvalidKeyWord(String),
     InvalidToken(Token),
     InvalidRegister(String),
+    EmptyFile,
 }
 
 impl Display for ParseError {
@@ -15,6 +16,9 @@ impl Display for ParseError {
             ParseError::InvalidKeyWord(word) => write!(f, "invalid keyword {word}"),
             ParseError::InvalidRegister(register) => write!(f, "invalid register {register}"),
             ParseError::InvalidToken(token) => write!(f, "invalid token {token:?}"),
+            ParseError::EmptyFile => write!(f, "Attempted to parse empty file"),
         }
     }
 }
+
+impl std::error::Error for ParseError {}

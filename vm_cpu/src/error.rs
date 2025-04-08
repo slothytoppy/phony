@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::memory;
 use crate::opcodes;
 use crate::registers;
@@ -7,6 +9,12 @@ pub enum Error {
     MemError(memory::Error),
     OpCodeError(opcodes::Error),
     RegisterError(registers::Error),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
 }
 
 impl From<opcodes::Error> for Error {
@@ -28,3 +36,5 @@ impl From<registers::Error> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl std::error::Error for Error {}

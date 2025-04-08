@@ -1,1 +1,2 @@
 phony is the name of the virtual machine I am going to create. It is called phony due to that being a synonym for something virtual.
+The VM can only run one process, this may be changed in the future. 
