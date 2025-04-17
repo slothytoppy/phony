@@ -1,6 +1,6 @@
 use crate::memory::{self};
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Address(u32);
 
 macro_rules! impl_address {
@@ -69,5 +69,21 @@ impl Address {
 impl std::fmt::Display for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
+    }
+}
+
+impl std::ops::Add for Address {
+    type Output = Address;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Address::from(self.0 + rhs.0)
+    }
+}
+
+impl std::ops::Sub for Address {
+    type Output = Address;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Address::from(self.0 - rhs.0)
     }
 }
