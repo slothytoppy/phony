@@ -18,6 +18,7 @@ pub enum Error {
 pub enum Register {
     IP,
     SP,
+    FP,
     R1,
     R2,
     R3,
@@ -30,7 +31,7 @@ pub enum Register {
 
 impl Register {
     pub const fn len() -> usize {
-        10
+        11
     }
 }
 
@@ -42,6 +43,7 @@ impl FromStr for Register {
         match s {
             "ip" => Ok(Self::IP),
             "sp" => Ok(Self::SP),
+            "fp" => Ok(Self::FP),
             "r1" => Ok(Self::R1),
             "r2" => Ok(Self::R2),
             "r3" => Ok(Self::R3),
@@ -105,14 +107,15 @@ macro_rules! register_impl {
                 match value as u8 {
                     0 => Ok(Register::IP),
                     1 => Ok(Register::SP),
-                    2 => Ok(Register::R1),
-                    3 => Ok(Register::R2),
-                    4 => Ok(Register::R3),
-                    5 => Ok(Register::R4),
-                    6 => Ok(Register::R5),
-                    7 => Ok(Register::R6),
-                    8 => Ok(Register::R7),
-                    9 => Ok(Register::R8),
+                    2 => Ok(Register::FP),
+                    3 => Ok(Register::R1),
+                    4 => Ok(Register::R2),
+                    5 => Ok(Register::R3),
+                    6 => Ok(Register::R4),
+                    7 => Ok(Register::R5),
+                    8 => Ok(Register::R6),
+                    9 => Ok(Register::R7),
+                    10 => Ok(Register::R8),
                     _ => Err(Error::InvalidRegister(value as u8))
                 }
             }
@@ -162,6 +165,7 @@ impl Registers {
         let mut registers = Self::default();
         registers.0[Register::IP as usize] = program_start;
         registers.0[Register::SP as usize] = stack_start;
+        registers.0[Register::FP as usize] = stack_start - 2;
 
         registers
     }
@@ -213,7 +217,7 @@ impl Index<Register> for Registers {
 
     #[track_caller]
     fn index(&self, index: Register) -> &Self::Output {
-        trace!("{}", self.0[index as usize]);
+        trace!("indexing register {index:?} got {}", self.0[index as usize]);
         &self.0[index as usize]
     }
 }
@@ -273,6 +277,6 @@ mod register_tests {
 
     #[test]
     fn len() {
-        assert!(Register::len() == 10);
+        assert!(Register::len() == 11);
     }
 }

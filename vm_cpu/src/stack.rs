@@ -1,7 +1,6 @@
-use std::ops::{Index, IndexMut};
+use tracing::info;
 
 use crate::memory::{Address, Error, Memory};
-use crate::registers::Register;
 
 #[derive(Debug)]
 pub struct Stack<const SIZE: usize> {
@@ -24,12 +23,28 @@ impl<const SIZE: usize> Memory for Stack<SIZE> {
         let byte = byte.into();
         let addr: Address = address.into();
         if addr < Address::from(SIZE) {
-            self.memory[usize::from(address.into())] = byte;
+            self.memory[usize::from(addr)] = byte;
         } else {
-            self.memory[usize::from(address.into()).saturating_sub(1)] = byte;
+            self.memory[usize::from(addr).saturating_sub(1)] = byte;
         }
         Ok(())
     }
+
+    // fn write_bytes<'a, A>(&mut self, address: A, bytes: impl Into<&'a [u8]>) -> Result<()>
+    // where
+    //     A: Into<Address> + Copy,
+    // {
+    //     let addr = address.into();
+    //     let bytes: &[u8] = bytes.into();
+    //
+    //     info!("writing bytes {bytes:?} into mem at address {addr}");
+    //
+    //     for (i, byte) in bytes.iter().enumerate() {
+    //         self.write(addr - Address::from(i), *byte)?;
+    //     }
+    //
+    //     Ok(())
+    // }
 
     fn get<A>(&self, start: A, end: A) -> std::result::Result<&[u8], Error>
     where
@@ -42,20 +57,6 @@ impl<const SIZE: usize> Memory for Stack<SIZE> {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl<const SIZE: usize> Index<Register> for Stack<SIZE> {
-    type Output = u8;
-
-    fn index(&self, index: Register) -> &Self::Output {
-        &self.memory[index as usize]
-    }
-}
-
-impl<const SIZE: usize> IndexMut<Register> for Stack<SIZE> {
-    fn index_mut(&mut self, index: Register) -> &mut Self::Output {
-        &mut self.memory[index as usize]
-    }
-}
 
 impl<const SIZE: usize> Default for Stack<SIZE> {
     fn default() -> Self {

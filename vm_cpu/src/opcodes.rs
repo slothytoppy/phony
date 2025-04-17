@@ -93,8 +93,8 @@ op_codes! {
     Halt,      0,
     Ret,       0,
 
-    Interrupt, 1,
-    InterruptReg, 1,
+    Interrupt, 4,
+    InterruptReg, 5,
 
     StoreReg, 2,
 
@@ -118,7 +118,7 @@ pub enum Instruction {
 
     MovMemMem(Address, Address),
     MovMemReg(Address, Register),
-    MovMemVal(Address, Value),
+    MovMemNum(Address, Value),
 
     AddRegReg(Register, Register),
     AddRegNum(Register, Value),
@@ -141,266 +141,11 @@ pub enum Instruction {
     StoreReg(Address, Register),
     StoreVal(Address, Value),
 
-    Interrupt(u8),
+    Interrupt(u32),
     InterruptReg(Register),
 
     Halt,
     Ret,
-}
-
-impl TryFrom<&[u8]> for Instruction {
-    type Error = crate::error::Error;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let opcode = OpCode::try_from(value[0])?;
-
-        println!("converting {opcode:?} into instruction");
-
-        Ok(match opcode {
-            OpCode::PushReg => {
-                let arg = Register::try_from(value[1])?;
-                Instruction::PushReg(arg)
-            }
-            OpCode::MovRegReg => {
-                let left = Register::try_from(value[1])?;
-
-                let right = Register::try_from(value[2])?;
-
-                Instruction::MovRegReg(left, right)
-            }
-            OpCode::MovRegU8 => {
-                let left = Register::try_from(value[0])
-                    .unwrap_or_else(|_| panic!("failed to convert {} into register", value[1]));
-
-                let right = value[2];
-
-                Instruction::MovRegNum(left, Value::U8(right))
-            }
-
-            OpCode::MovRegU16 => {
-                let left = Register::try_from(value[0])
-                    .unwrap_or_else(|_| panic!("failed to convert {} into register", value[1]));
-
-                let right = u16::from_le_bytes([value[2], value[3]]);
-
-                Instruction::MovRegNum(left, Value::U16(right))
-            }
-
-            OpCode::MovRegU32 => {
-                let left = Register::try_from(value[0])
-                    .unwrap_or_else(|_| panic!("failed to convert {} into register", value[1]));
-
-                let right = u32::from_le_bytes([value[2], value[3], value[4], value[5]]);
-
-                Instruction::MovRegNum(left, Value::U32(right))
-            }
-
-            OpCode::AddRegReg => {
-                let left = Register::try_from(value[1])?;
-                let right = Register::try_from(value[2])?;
-
-                Instruction::AddRegReg(left, right)
-            }
-            OpCode::AddRegU8 => {
-                let left = Register::try_from(value[1])
-                    .unwrap_or_else(|_| panic!("failed to convert {} into register", value[1]));
-
-                let right = value[2];
-
-                Instruction::AddRegNum(left, Value::U8(right))
-            }
-
-            OpCode::AddRegU16 => {
-                let left = Register::try_from(value[1])
-                    .unwrap_or_else(|_| panic!("failed to convert {} into register", value[1]));
-
-                let right = u16::from_le_bytes([value[2], value[3]]);
-
-                Instruction::AddRegNum(left, Value::U16(right))
-            }
-
-            OpCode::AddRegU32 => {
-                let left = Register::try_from(value[1])
-                    .unwrap_or_else(|_| panic!("failed to convert {} into register", value[1]));
-
-                let right = u32::from_le_bytes([value[2], value[3], value[4], value[5]]);
-
-                Instruction::AddRegNum(left, Value::U32(right))
-            }
-
-            OpCode::PopReg => {
-                let reg = Register::try_from(value[1])?;
-
-                Instruction::PopReg(reg)
-            }
-            OpCode::Jump => Instruction::Jump(value[1].into()),
-            OpCode::Call => Instruction::Call(value[1].into()),
-            OpCode::Halt => Instruction::Halt,
-            OpCode::Ret => Instruction::Ret,
-            OpCode::Load => {
-                let reg = Register::try_from(value[1])?;
-                let addr = u32::from_le_bytes([value[2], value[3], value[4], value[5]]);
-                Instruction::Load(reg, addr.into())
-            }
-            OpCode::MovRegMem => {
-                let reg = Register::try_from(value[1])?;
-                let addr = u32::from_le_bytes([value[2], value[3], value[4], value[5]]);
-
-                Instruction::MovRegMem(reg, addr.into())
-            }
-            OpCode::MovMemMem => {
-                let l_addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-                let r_addr = u32::from_le_bytes([value[5], value[6], value[7], value[8]]);
-
-                Instruction::MovMemMem(Address::from(l_addr), r_addr.into())
-            }
-            OpCode::MovMemReg => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-                let reg = Register::try_from(value[5])?;
-
-                Instruction::MovMemReg(addr.into(), reg)
-            }
-            OpCode::AddRegMem => {
-                let reg = Register::try_from(value[1])?;
-                let addr = u32::from_le_bytes([value[2], value[3], value[4], value[5]]);
-
-                Instruction::AddRegMem(reg, addr.into())
-            }
-            OpCode::IncReg => {
-                let reg = Register::try_from(value[1])?;
-
-                Instruction::IncReg(reg)
-            }
-            OpCode::IncMem => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-
-                Instruction::IncMem(addr.into())
-            }
-            OpCode::PushMem => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-
-                Instruction::PushMem(addr.into())
-            }
-            OpCode::Interrupt => Instruction::Interrupt(value[1]),
-            OpCode::InterruptReg => Instruction::InterruptReg(Register::try_from(value[1])?),
-            OpCode::StoreReg => {
-                let reg = Register::try_from(value[1])?;
-                let addr = u32::from_le_bytes([value[2], value[3], value[4], value[5]]);
-
-                Instruction::StoreReg(addr.into(), reg)
-            }
-            OpCode::MovMemU8 => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-
-                Instruction::MovMemVal(addr.into(), Value::U8(value[5]))
-            }
-            OpCode::MovMemU16 => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-                let val = u16::from_le_bytes([value[5], value[6]]);
-
-                Instruction::MovMemVal(addr.into(), Value::U16(val))
-            }
-            OpCode::MovMemU32 => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-                let val = u32::from_le_bytes([value[5], value[6], value[7], value[8]]);
-
-                Instruction::MovMemVal(addr.into(), Value::U32(val))
-            }
-            OpCode::PushU8 => {
-                let val = Value::U8(value[1]);
-
-                Instruction::PushVal(val)
-            }
-            OpCode::PushU16 => {
-                let val = u16::from_le_bytes([value[1], value[2]]);
-                let val = Value::U16(val);
-
-                Instruction::PushVal(val)
-            }
-            OpCode::PushU32 => {
-                let val = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-                let val = Value::U32(val);
-
-                Instruction::PushVal(val)
-            }
-            OpCode::StoreU8 => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-                let val = Value::U8(value[5]);
-
-                Instruction::StoreVal(addr.into(), val)
-            }
-            OpCode::StoreU16 => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-
-                let val = u16::from_le_bytes([value[5], value[6]]);
-                let val = Value::U16(val);
-
-                Instruction::StoreVal(addr.into(), val)
-            }
-            OpCode::StoreU32 => {
-                let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-
-                let val = u32::from_le_bytes([value[5], value[6], value[7], value[8]]);
-                let val = Value::U32(val);
-
-                Instruction::StoreVal(addr.into(), val)
-            }
-        })
-
-        // Ok(match opcode {
-        //     OpCode::MovRegMem => {
-        //         let addr = u32::from_le_bytes([value[2], value[3], value[4], value[5]]);
-        //         Instruction::MovRegMem(Register::try_from(value[1])?, Address::from(addr))
-        //     }
-        //     OpCode::MovRegReg => {
-        //         let r1 = Register::try_from(value[1])?;
-        //         let r2 = Register::try_from(value[1])?;
-        //
-        //         Instruction::MovRegReg(r1, r2)
-        //     }
-        //     OpCode::MovRegNum => {},
-        //     OpCode::MovMemMem => {
-        //         let l_addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-        //         let r_addr = u32::from_le_bytes([value[5], value[6], value[7], value[8]]);
-        //
-        //         Instruction::MovMemMem(Address::from(l_addr), Address::from(r_addr))
-        //     }
-        //     OpCode::MovMemReg => {
-        //         let addr = u32::from_le_bytes([value[1], value[2], value[3], value[4]]);
-        //         let reg = Register::try_from(value[5])?;
-        //
-        //         Instruction::MovMemReg(Address::from(addr), reg)
-        //     }
-        //     OpCode::MovMemU8 => {},
-        //     OpCode::MovMemU16 => {},
-        //     OpCode::MovMemU32 => {},
-        //     OpCode::AddRegReg => {},
-        //     OpCode::AddRegNum => {},
-        //     OpCode::AddRegMem => {},
-        //     OpCode::AddRegU8 => {},
-        //     OpCode::AddRegU16 => {},
-        //     OpCode::AddRegU32 => {},
-        //     OpCode::IncReg => Instruction::IncReg(Register::try_from(value[1])?),
-        //     OpCode::IncMem => {},
-        //     OpCode::PushReg => {},
-        //     OpCode::PushMem => {},
-        //     OpCode::PushU8 => {},
-        //     OpCode::PushU16 => {},
-        //     OpCode::PushU32 => {},
-        //     OpCode::PopReg => {},
-        //     OpCode::Jump => {},
-        //     OpCode::Call => {},
-        //     OpCode::Load => {},
-        //     OpCode::Halt => Instruction::Halt,
-        //     OpCode::Ret => Instruction::Ret,
-        //     OpCode::Interrupt => {},
-        //     OpCode::InterruptReg => {},
-        //     OpCode::StoreReg => {},
-        //     OpCode::StoreU8 => {},
-        //     OpCode::StoreU16 => {},
-        //     OpCode::StoreU32 => {},
-        // })
-    }
 }
 
 impl From<Instruction> for OpCode {
@@ -419,7 +164,7 @@ impl From<Instruction> for OpCode {
             MovMemMem(_, _) => OpCode::MovMemMem,
             MovMemReg(_, _) => OpCode::MovMemReg,
 
-            MovMemVal(_, val) => match val {
+            MovMemNum(_, val) => match val {
                 Value::U8(_) => OpCode::MovMemU8,
                 Value::U16(_) => OpCode::MovMemU16,
                 Value::U32(_) => OpCode::MovMemU32,
