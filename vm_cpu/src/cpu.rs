@@ -6,7 +6,7 @@ use crate::{
     error::Error,
     memory::{Address, Memory},
     opcodes::{Instruction, OpCode, Value},
-    registers::{Register, Registers, WordSize},
+    registers::{Register, Registers},
     stack::{self},
 };
 
@@ -96,14 +96,6 @@ impl<M: Memory> Cpu<M> {
                 Instruction::MovRegNum(left, Value::U32(right))
             }
 
-            OpCode::MovMemMem => {
-                let l_addr =
-                    u32::from_le_bytes([bytecode[0], bytecode[1], bytecode[2], bytecode[3]]);
-                let r_addr =
-                    u32::from_le_bytes([bytecode[4], bytecode[5], bytecode[6], bytecode[7]]);
-
-                Instruction::MovMemMem(Address::from(l_addr), r_addr.into())
-            }
             OpCode::MovMemReg => {
                 let addr = u32::from_le_bytes([bytecode[0], bytecode[1], bytecode[2], bytecode[3]]);
                 let reg = Register::try_from(bytecode[4])?;
@@ -268,7 +260,9 @@ impl<M: Memory> Cpu<M> {
 
     fn execute_instruction(&mut self, inst: Instruction) -> Result<ControlFlow<(), ()>, Error> {
         match inst {
-            Instruction::MovRegMem(_register, _address) => todo!(),
+            Instruction::MovRegMem(register, address) => {
+                self.memory.write_u32(address, self.registers[register])?
+            }
             Instruction::MovRegReg(register, register1) => {
                 self.registers[register] = self.registers[register1]
             }
@@ -281,9 +275,14 @@ impl<M: Memory> Cpu<M> {
                 self.registers[register] = val
             }
 
-            Instruction::MovMemMem(_address, _address1) => todo!(),
-            Instruction::MovMemReg(_address, _register) => todo!(),
-            Instruction::MovMemNum(_address, _bytecode) => todo!(),
+            Instruction::MovMemReg(address, register) => {
+                self.registers[register] = self.memory.read_u32(address)?
+            }
+            Instruction::MovMemNum(address, val) => match val {
+                Value::U8(val) => self.memory.write(address, val),
+                Value::U16(val) => self.memory.write_u16(address, val),
+                Value::U32(val) => self.memory.write_u32(address, val),
+            }?,
 
             Instruction::AddRegReg(register, register1) => {
                 self.registers[register] += self.registers[register1]
@@ -293,11 +292,15 @@ impl<M: Memory> Cpu<M> {
                 Value::U16(val) => self.registers[register] += val as u32,
                 Value::U32(val) => self.registers[register] += val,
             },
-            Instruction::AddRegMem(_register, _address) => todo!(),
+            Instruction::AddRegMem(register, address) => {
+                self.registers[register] += self.memory.read_u32(address)?
+            }
 
             Instruction::IncReg(register) => {
                 self.registers[register] += 1;
             }
+
+            // should it incremement the address or what it points to?
             Instruction::IncMem(_address) => todo!(),
 
             Instruction::PushReg(register) => self.push_stack(self.registers[register])?,
@@ -333,34 +336,17 @@ impl<M: Memory> Cpu<M> {
             }
 
             Instruction::Load(register, address) => {
-                self.registers[register] = self.memory.read(address)?.into()
+                self.registers[register] = self.memory.read_u32(address)?
             }
 
             Instruction::StoreReg(address, register) => {
                 let num = self.registers[register];
-                let upper = num.upper();
-                let lower = num.lower();
-
-                self.memory.write(address, lower.lower())?;
-                self.memory.write(address, lower.upper())?;
-
-                self.memory.write(address, upper.lower())?;
-                self.memory.write(address, upper.upper())?;
+                self.memory.write_u32(address, num)?
             }
             Instruction::StoreVal(address, bytecode) => match bytecode {
                 Value::U8(num) => self.memory.write(address, num)?,
-                Value::U16(num) => self
-                    .memory
-                    .write_bytes(address, &[num.lower(), num.upper()] as &[u8])?,
-                Value::U32(num) => {
-                    let upper = num.upper();
-                    let lower = num.lower();
-
-                    self.memory.write_bytes(
-                        address,
-                        &[lower.lower(), lower.upper(), upper.lower(), upper.upper()] as &[u8],
-                    )?
-                }
+                Value::U16(num) => self.memory.write_u16(address, num)?,
+                Value::U32(num) => self.memory.write_u32(address, num)?,
             },
 
             Instruction::Interrupt(idx) => self.handle_interrupt(idx)?,
@@ -371,17 +357,7 @@ impl<M: Memory> Cpu<M> {
 
             Instruction::Halt => return Ok(ControlFlow::Break(())),
 
-            Instruction::Ret => {
-                let size = self.pop_stack()?;
-                self.registers[Register::IP] = self.pop_stack()?;
-                self.push_stack(self.registers[Register::R4])?;
-                self.push_stack(self.registers[Register::R3])?;
-                self.push_stack(self.registers[Register::R2])?;
-                self.push_stack(self.registers[Register::R1])?;
-
-                self.registers[Register::FP] += size;
-                todo!()
-            }
+            Instruction::Ret => self.restore_stack()?,
         }
 
         Ok(ControlFlow::Continue(()))
@@ -471,6 +447,30 @@ impl<M: Memory> Cpu<M> {
         let fp_size = fp - next_fp;
 
         self.memory.write_u32(Address::from(sp), fp_size)?;
+
+        Ok(())
+    }
+
+    fn restore_stack(&mut self) -> stack::Result<()> {
+        let fp = self.registers[Register::FP];
+
+        self.registers[Register::SP] = fp;
+
+        let frame_size = self.pop_stack()?;
+        let ip = self.pop_stack()?;
+        let r4 = self.pop_stack()?;
+        let r3 = self.pop_stack()?;
+        let r2 = self.pop_stack()?;
+        let r1 = self.pop_stack()?;
+
+        self.registers[Register::IP] = ip;
+        self.registers[Register::R4] = r4;
+        self.registers[Register::R3] = r3;
+        self.registers[Register::R2] = r2;
+        self.registers[Register::R1] = r1;
+
+        let prev_frame_ptr = fp + frame_size;
+        self.registers[Register::FP] = prev_frame_ptr;
 
         Ok(())
     }

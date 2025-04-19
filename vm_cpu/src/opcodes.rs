@@ -59,7 +59,6 @@ op_codes! {
     MovRegU16, 3,
     MovRegU32, 5,
 
-    MovMemMem, 8,
     MovMemReg, 5,
 
     MovMemU8, 5,
@@ -116,7 +115,6 @@ pub enum Instruction {
     MovRegReg(Register, Register),
     MovRegNum(Register, Value),
 
-    MovMemMem(Address, Address),
     MovMemReg(Address, Register),
     MovMemNum(Address, Value),
 
@@ -161,7 +159,6 @@ impl From<Instruction> for OpCode {
                 Value::U32(_) => OpCode::MovRegU32,
             },
 
-            MovMemMem(_, _) => OpCode::MovMemMem,
             MovMemReg(_, _) => OpCode::MovMemReg,
 
             MovMemNum(_, val) => match val {
