@@ -15,6 +15,7 @@ pub struct Cpu<M: Memory> {
     registers: Registers,
     interrupt_table: Address,
     in_interrupt: bool,
+    program_start: Address,
     memory: M,
 }
 
@@ -25,6 +26,7 @@ impl<M: Memory> Cpu<M> {
             registers: Registers::new(program_start, stack_start),
             interrupt_table,
             in_interrupt: false,
+            program_start: program_start.into(),
         }
     }
 
@@ -260,9 +262,9 @@ impl<M: Memory> Cpu<M> {
 
     fn execute_instruction(&mut self, inst: Instruction) -> Result<ControlFlow<(), ()>, Error> {
         match inst {
-            Instruction::MovRegMem(register, address) => {
-                self.memory.write_u32(address, self.registers[register])?
-            }
+            Instruction::MovRegMem(register, address) => self
+                .memory
+                .write_u32(self.program_start + address, self.registers[register])?,
             Instruction::MovRegReg(register, register1) => {
                 self.registers[register] = self.registers[register1]
             }
@@ -276,12 +278,12 @@ impl<M: Memory> Cpu<M> {
             }
 
             Instruction::MovMemReg(address, register) => {
-                self.registers[register] = self.memory.read_u32(address)?
+                self.registers[register] = self.memory.read_u32(self.program_start + address)?
             }
             Instruction::MovMemNum(address, val) => match val {
-                Value::U8(val) => self.memory.write(address, val),
-                Value::U16(val) => self.memory.write_u16(address, val),
-                Value::U32(val) => self.memory.write_u32(address, val),
+                Value::U8(val) => self.memory.write(self.program_start + address, val),
+                Value::U16(val) => self.memory.write_u16(self.program_start + address, val),
+                Value::U32(val) => self.memory.write_u32(self.program_start + address, val),
             }?,
 
             Instruction::AddRegReg(register, register1) => {
@@ -293,7 +295,7 @@ impl<M: Memory> Cpu<M> {
                 Value::U32(val) => self.registers[register] += val,
             },
             Instruction::AddRegMem(register, address) => {
-                self.registers[register] += self.memory.read_u32(address)?
+                self.registers[register] += self.memory.read_u32(self.program_start + address)?
             }
 
             Instruction::IncReg(register) => {
@@ -305,7 +307,7 @@ impl<M: Memory> Cpu<M> {
 
             Instruction::PushReg(register) => self.push_stack(self.registers[register])?,
             Instruction::PushMem(address) => {
-                let val = self.memory.read_u32(address)?;
+                let val = self.memory.read_u32(self.program_start + address)?;
 
                 self.push_stack(val)?
             }
@@ -322,10 +324,12 @@ impl<M: Memory> Cpu<M> {
                 let val = self.pop_stack()?;
                 self.registers[register] = val;
             }
-            Instruction::Jump(address) => self.registers[Register::IP] = address.into(),
+            Instruction::Jump(address) => {
+                self.registers[Register::IP] = (self.program_start + address).into()
+            }
             Instruction::Call(addr) => {
                 self.registers[Register::SP] = self.registers[Register::IP];
-                self.registers[Register::IP] = addr.into();
+                self.registers[Register::IP] = (self.program_start + addr).into();
                 self.push_stack(self.registers[Register::R1])?;
                 self.push_stack(self.registers[Register::R2])?;
                 self.push_stack(self.registers[Register::R3])?;
@@ -336,17 +340,17 @@ impl<M: Memory> Cpu<M> {
             }
 
             Instruction::Load(register, address) => {
-                self.registers[register] = self.memory.read_u32(address)?
+                self.registers[register] = self.memory.read_u32(self.program_start + address)?
             }
 
             Instruction::StoreReg(address, register) => {
                 let num = self.registers[register];
-                self.memory.write_u32(address, num)?
+                self.memory.write_u32(self.program_start + address, num)?
             }
             Instruction::StoreVal(address, bytecode) => match bytecode {
-                Value::U8(num) => self.memory.write(address, num)?,
-                Value::U16(num) => self.memory.write_u16(address, num)?,
-                Value::U32(num) => self.memory.write_u32(address, num)?,
+                Value::U8(num) => self.memory.write(self.program_start + address, num)?,
+                Value::U16(num) => self.memory.write_u16(self.program_start + address, num)?,
+                Value::U32(num) => self.memory.write_u32(self.program_start + address, num)?,
             },
 
             Instruction::Interrupt(idx) => self.handle_interrupt(idx)?,

@@ -1,5 +1,3 @@
-use tracing::info;
-
 use crate::memory::{Address, Error, Memory};
 
 #[derive(Debug)]
@@ -29,22 +27,6 @@ impl<const SIZE: usize> Memory for Stack<SIZE> {
         }
         Ok(())
     }
-
-    // fn write_bytes<'a, A>(&mut self, address: A, bytes: impl Into<&'a [u8]>) -> Result<()>
-    // where
-    //     A: Into<Address> + Copy,
-    // {
-    //     let addr = address.into();
-    //     let bytes: &[u8] = bytes.into();
-    //
-    //     info!("writing bytes {bytes:?} into mem at address {addr}");
-    //
-    //     for (i, byte) in bytes.iter().enumerate() {
-    //         self.write(addr - Address::from(i), *byte)?;
-    //     }
-    //
-    //     Ok(())
-    // }
 
     fn get<A>(&self, start: A, end: A) -> std::result::Result<&[u8], Error>
     where
