@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::memory::{Address, Error, Memory};
 
 #[derive(Debug)]
@@ -28,13 +30,8 @@ impl<const SIZE: usize> Memory for Stack<SIZE> {
         Ok(())
     }
 
-    fn get<A>(&self, start: A, end: A) -> std::result::Result<&[u8], Error>
-    where
-        A: Into<Address> + Copy,
-    {
-        let start = start.into();
-        let end = end.into();
-        Ok(&self.memory[usize::from(start)..usize::from(end)])
+    fn get(&self, bytes: Range<Address>) -> std::result::Result<&[u8], Error> {
+        Ok(&self.memory[usize::from(bytes.start)..usize::from(bytes.end)])
     }
 }
 

@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::Range};
 
 use tracing::info;
 
@@ -89,10 +89,5 @@ pub trait Memory: Debug + Default {
 
     #[track_caller]
     #[allow(unused_variables)]
-    fn get<A>(&self, address_start: A, address_end: A) -> Result<&[u8]>
-    where
-        A: Into<Address> + Copy,
-    {
-        todo!()
-    }
+    fn get(&self, bytes: Range<Address>) -> Result<&[u8]>;
 }

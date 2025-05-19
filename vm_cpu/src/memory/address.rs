@@ -1,26 +1,10 @@
 use crate::memory::{self};
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd, Eq)]
 pub struct Address(u32);
 
 macro_rules! impl_address {
     ($($variant:ty),* $(,)?) => {
-
-        //impl TryFrom<$($variant)?> for Address {
-        //    type Error = crate::memory::Error;
-        //
-        //    fn try_from(value: $($variant)?) -> Result<Address, Self::Error> {
-        //        Ok(Address(value as u32))
-        //    }
-        //}
-
-        //impl TryFrom<&$($variant)?> for Address{
-        //    type Error = crate::memory::Error;
-        //
-        //    fn try_from(value: &$($variant)?) -> Result<Address, Self::Error> {
-        //        Address::try_from(*value)
-        //    }
-        //}
 
         impl From<Address> for $($variant)?{
             fn from(value: Address) -> $($variant)?{
@@ -40,6 +24,7 @@ macro_rules! impl_address {
                 Address(*value as u32)
             }
         }
+
 
     }
 }

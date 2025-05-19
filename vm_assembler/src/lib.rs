@@ -2,7 +2,6 @@ mod error;
 mod tests;
 mod tokens;
 
-mod ast;
 mod parser;
 
 pub use error::ParseError;

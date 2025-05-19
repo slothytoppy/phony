@@ -1,7 +1,6 @@
 [workspace]
-members = ["vm_cpu"]
-# members = ["vm_cpu", "vm_assembler"]
-# default-members = ["vm_assembler"]
+members = ["vm_cpu", "vm_assembler"]
+default-members = ["vm_assembler"]
 resolver = "2"
 
 [workspace.dependencies]

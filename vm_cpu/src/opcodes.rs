@@ -3,6 +3,7 @@ use crate::{memory::Address, registers::Register};
 #[derive(Debug)]
 pub enum Error {
     InvalidOpCode(u8),
+    InvalidComparison(u8),
 }
 
 macro_rules! op_codes {
@@ -54,20 +55,17 @@ macro_rules! op_codes {
 op_codes! {
     MovRegMem, 5,
     MovRegReg, 2,
-
     MovRegU8, 2,
     MovRegU16, 3,
     MovRegU32, 5,
-
     MovMemReg, 5,
-
     MovMemU8, 5,
     MovMemU16, 6,
     MovMemU32, 8,
 
     AddRegReg, 2,
     AddRegMem, 5,
-
+    AddMemReg, 5,
     AddRegU8, 2,
     AddRegU16, 3,
     AddRegU32, 5,
@@ -77,14 +75,23 @@ op_codes! {
 
     PushReg,   1,
     PushMem,   4,
-
     PushU8, 1,
     PushU16, 2,
     PushU32, 4,
 
     PopReg,    1,
 
+    CmpReg,    2,
+    CmpU8,     2,
+    CmpU16,    3,
+    CmpU32,    5,
+
     Jump,      4,
+    JumpGe,    4,
+    JumpGte,    4,
+    JumpLe,    4,
+    JumpLte,    4,
+
     Call,      4,
 
     Load, 4,
@@ -95,18 +102,44 @@ op_codes! {
     Interrupt, 4,
     InterruptReg, 5,
 
-    StoreReg, 2,
-
+    StoreReg, 5,
     StoreU8, 5,
     StoreU16, 6,
     StoreU32, 8,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Value {
     U8(u8),
     U16(u16),
     U32(u32),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub enum Comparison {
+    Eq,
+    Ne,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+}
+
+impl TryFrom<u8> for Comparison {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Eq,
+            1 => Self::Ne,
+            2 => Self::Lt,
+            3 => Self::Lte,
+            4 => Self::Gt,
+            5 => Self::Gte,
+
+            _ => return Err(Error::InvalidComparison(value)),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -121,6 +154,7 @@ pub enum Instruction {
     AddRegReg(Register, Register),
     AddRegNum(Register, Value),
     AddRegMem(Register, Address),
+    AddMemReg(Address, Register),
 
     IncReg(Register),
     IncMem(Address),
@@ -131,7 +165,15 @@ pub enum Instruction {
 
     PopReg(Register),
 
+    CmpReg(Register, Register),
+    CmpVal(Value, Value),
+
     Jump(Address),
+    JumpGe(Address),
+    JumpGte(Address),
+    JumpLt(Address),
+    JumpLte(Address),
+
     Call(Address),
 
     Load(Register, Address),
@@ -180,6 +222,7 @@ impl From<Instruction> for OpCode {
 
             AddRegReg(_, _) => OpCode::AddRegReg,
             AddRegMem(_, _) => OpCode::AddRegMem,
+            AddMemReg(_, _) => OpCode::AddMemReg,
 
             AddRegNum(_, val) => match val {
                 Value::U8(_) => OpCode::AddRegU8,
@@ -190,7 +233,19 @@ impl From<Instruction> for OpCode {
             Interrupt(_) => OpCode::Interrupt,
             InterruptReg(_) => OpCode::InterruptReg,
 
+            CmpReg(_, _) => OpCode::CmpReg,
+            CmpVal(val, _) => match val {
+                Value::U8(_) => OpCode::CmpU8,
+                Value::U16(_) => OpCode::CmpU16,
+                Value::U32(_) => OpCode::CmpU32,
+            },
+
             Jump(_) => OpCode::Jump,
+            JumpGe(_) => OpCode::JumpGe,
+            JumpGte(_) => OpCode::JumpGte,
+            JumpLt(_) => OpCode::JumpLe,
+            JumpLte(_) => OpCode::JumpLte,
+
             Call(_) => OpCode::Call,
 
             IncReg(_) => OpCode::IncReg,
