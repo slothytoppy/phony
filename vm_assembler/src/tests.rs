@@ -22,7 +22,7 @@ mod test {
         }
     }
 
-    impl From<ParseError> for Error {
+    impl From<ParseError<'_>> for Error {
         fn from(_: ParseError) -> Self {
             Self::ParseError(())
         }
@@ -44,12 +44,14 @@ mod test {
         halt
         "#;
 
-        let parser: Parser = asm.parse()?;
-        println!("parser {:?}", parser.insts());
+        let mut parser = Parser::default();
+        let _ = parser.parse(asm);
+
+        println!("parser {:?}", parser);
         let mem = Stack::<65535>::new();
         let mut cpu = vm_cpu::cpu::Cpu::new(mem, 0, (u16::MAX - 8000) as u32, 0.into());
         // write_instructions_to_memory(parser.insts())?;
-        println!("instructions: {:?}", parser.insts());
+        println!("instructions: {:?}", parser);
         println!("memory {:?}", cpu.memory().get(0_u16.into()..20_u16.into()));
         cpu.execute();
 

@@ -2,25 +2,96 @@ use core::panic;
 use std::{num::IntErrorKind, str::FromStr};
 
 use crate::ParseError;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use vm_cpu::registers::Register;
 
-#[derive(Debug, Default)]
-pub(crate) struct Tokenizer {
-    tokens: Vec<Token>,
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Tokenizer<'a> {
+    tokens: Vec<Token<'a>>,
 }
 
-impl Tokenizer {
-    pub fn tokenize(&mut self, data: &str) -> Tokenizer {
-        let mut tokenizer = Tokenizer::default();
+fn tokenize_word(word: &str) -> Result<Token, ParseError> {
+    let word = word.trim();
 
+    if let Ok(keyword) = KeyWord::from_str(word) {
+        return Ok(Token::KeyWord(keyword));
+    }
+
+    if let Some(idx) = word.find(',') {
+        let reg = Register::from_str(&word[0..idx])
+            .map_err(|_| ParseError::InvalidRegister(word[0..idx].to_string()))?;
+        return Ok(Token::Register(reg));
+    }
+
+    if let Ok(reg) = Register::from_str(word) {
+        return Ok(Token::Register(reg));
+    }
+
+    match Address::parse(word) {
+        Ok(addr) => return Ok(Token::Address(addr)),
+        Err(e) => error!(?e, ?word),
+    }
+
+    if let Ok(num) = Number::parse(word) {
+        return Ok(Token::Number(num));
+    }
+
+    if let Ok(label) = Ident::parse(word) {
+        return Ok(Token::Identifier(label));
+    }
+
+    panic!("{word:?}");
+}
+
+impl<'a> IntoIterator for Tokenizer<'a> {
+    type Item = Token<'a>;
+    type IntoIter = TokenizerIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TokenizerIterator {
+            idx: 0,
+            tokenizer: self,
+        }
+    }
+}
+
+impl<'a> Tokenizer<'a> {
+    pub fn tokenize(data: &'a str) -> Tokenizer<'a> {
+        let mut tokenizer = Tokenizer::default();
         data.split_whitespace().for_each(|word| {
-            if let Ok(token) = Token::from_str(word) {
+            if let Ok(token) = tokenize_word(word) {
                 tokenizer.tokens.push(token);
             }
         });
 
         tokenizer
+    }
+
+    pub fn get(&self, idx: usize) -> Option<&Token> {
+        self.tokens.get(idx)
+    }
+}
+
+#[derive(Debug)]
+pub struct TokenizerIterator<'a> {
+    tokenizer: Tokenizer<'a>,
+    idx: usize,
+}
+
+impl<'a> Iterator for TokenizerIterator<'a> {
+    type Item = Token<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx < self.tokenizer.tokens.len() {
+            let next = Some(&self.tokenizer.tokens[self.idx]);
+            self.idx += 1;
+            return next.cloned();
+        }
+        None
+    }
+
+    fn count(self) -> usize {
+        self.tokenizer.tokens.len()
     }
 }
 
@@ -31,26 +102,23 @@ pub enum Number {
     U32(u32),
 }
 
-impl FromStr for Number {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl<'a> Number {
+    fn parse(s: &'a str) -> Result<Self, ParseError<'a>> {
         let s = s.trim();
 
         match s.parse::<u8>() {
             Ok(num) => Ok(Number::U8(num)),
             Err(e) => match e.kind() {
                 IntErrorKind::Empty => panic!(),
-                IntErrorKind::InvalidDigit => {
-                    Err(ParseError::InvalidNumber(IntErrorKind::InvalidDigit))
-                }
+                IntErrorKind::InvalidDigit => Err(ParseError::InvalidNumber(e.kind().clone())),
                 IntErrorKind::PosOverflow => match s.parse::<u16>() {
                     Ok(num) => Ok(Number::U16(num)),
                     Err(e) => match e.kind() {
                         IntErrorKind::Empty => panic!(),
                         IntErrorKind::InvalidDigit => {
-                            Err(ParseError::InvalidNumber(IntErrorKind::InvalidDigit))
+                            Err(ParseError::InvalidNumber(e.kind().clone()))
                         }
+
                         IntErrorKind::PosOverflow => match s.parse::<u32>() {
                             Ok(num) => Ok(Number::U32(num)),
                             Err(e) => match e.kind() {
@@ -80,10 +148,8 @@ impl FromStr for Number {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Address(u32);
 
-impl FromStr for Address {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl Address {
+    fn parse(s: &str) -> Result<Self, ParseError<'_>> {
         let s = s.trim();
 
         let mut start = None;
@@ -112,49 +178,35 @@ impl FromStr for Address {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Token {
+pub enum Ident<'a> {
+    // tokenizer is not responsible for resolving labels, only for collecting them
+    Ident(&'a str),
+}
+
+impl<'a> Ident<'a> {
+    fn parse(s: &'a str) -> Result<Self, ParseError<'a>> {
+        let s = s.trim();
+
+        // if its not a keyword, it should be an Ident since it also shouldnt be anything else
+        if KeyWord::from_str(s).is_err() {
+            Ok(Ident::Ident(s))
+        } else {
+            Err(ParseError::InvalidIdent(s.to_string()))
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Token<'a> {
     KeyWord(KeyWord),
     Register(Register),
     Number(Number),
     Address(Address),
-    // Label(Label),
-}
-
-impl FromStr for Token {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.trim();
-
-        if let Ok(keyword) = KeyWord::from_str(s) {
-            return Ok(Token::KeyWord(keyword));
-        }
-
-        if let Some(idx) = s.find(',') {
-            let reg = Register::from_str(&s[0..idx])
-                .map_err(|_| ParseError::InvalidRegister(s[0..idx].to_string()))?;
-            return Ok(Token::Register(reg));
-        }
-
-        if let Ok(reg) = Register::from_str(s) {
-            return Ok(Token::Register(reg));
-        }
-
-        match Address::from_str(s) {
-            Ok(addr) => return Ok(Token::Address(addr)),
-            Err(e) => error!(?e, ?s),
-        }
-
-        if let Ok(num) = Number::from_str(s) {
-            return Ok(Token::Number(num));
-        }
-
-        panic!("{s:?}");
-    }
+    Identifier(Ident<'a>),
 }
 
 macro_rules! keywords {
-    ($($variant:ident, $amount:ident = $arg_amount:literal),* $(,)?) => {
+    ($($variant:ident),* $(,)?) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u8)]
         #[rustfmt::skip]
@@ -162,55 +214,33 @@ macro_rules! keywords {
             $($variant),*
         }
 
-        impl KeyWord {
-            pub fn increment_amount(&self) -> u16 {
-                match self {
-                    $(KeyWord::$variant => $arg_amount,)*
-                }
-            }
-        }
-
         impl FromStr for KeyWord {
-            type Err = ParseError;
+            type Err = ParseError<'static>;
 
             fn from_str(value: &str) -> Result<Self, Self::Err> {
-                match value {
-                    "mov" => Ok(KeyWord::Mov),
-                    "add" => Ok(KeyWord::Add),
-                    "pop" => Ok(KeyWord::Pop),
-                    "ret" => Ok(KeyWord::Ret),
-                    "halt" => Ok(KeyWord::Halt),
-                    "jump" => Ok(KeyWord::Jump),
-                    "load" => Ok(KeyWord::Load),
-                    "push" => Ok(KeyWord::Push),
-                    "call" => Ok(KeyWord::Call),
-
-                    _ => Err(Self::Err::InvalidKeyWord(value.to_string()))
-                }
-            }
-        }
-
-        impl std::fmt::Display for KeyWord {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self {
-                $(Self::$variant { .. } => f.write_str(stringify!($variant))?,)*
-            }
-
-            write!(f, ": {self:?}")
+                $(
+                    if value == stringify!($variant).to_lowercase() {
+                        return Ok(KeyWord::$variant);
+                    }
+                )*
+            return Err(ParseError::InvalidKeyWord(value.to_string()));
             }
         }
     }
 }
 
 keywords! {
-    Mov, amount = 3,
-    Add, amount = 3,
-    Load, amount = 3,
-    Jump, amount = 2,
-    Push, amount = 2,
-    Pop, amount = 2,
-    Call, amount = 2,
-    Ret, amount = 1,
-    Halt, amount = 1,
-    Cmp, amount = 2,
+    Mov,
+    Add,
+    Load,
+    Jump,
+    Push,
+    Pop,
+    Call,
+    Ret,
+    Halt,
+    Cmp,
+    Inc,
+    Store,
+    Interrupt,
 }

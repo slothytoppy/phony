@@ -21,6 +21,6 @@ fn main() {
 
     let file = std::fs::read_to_string(args.input).expect("failed to read input file");
 
-    let mut parser = vm_assembler::Parser::new(&file);
-    let _insts = parser.parse().expect("failed to parse input file");
+    let mut parser = vm_assembler::Parser::default();
+    parser.parse(&file).expect("failed to parse input file");
 }
