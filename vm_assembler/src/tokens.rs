@@ -2,90 +2,89 @@ use core::panic;
 use std::{num::IntErrorKind, str::FromStr};
 
 use crate::ParseError;
-use tracing::{error, info};
+use tracing::trace;
 use vm_cpu::registers::Register;
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Tokenizer<'a> {
+pub(crate) struct Lexer<'a> {
     tokens: Vec<Token<'a>>,
 }
 
-fn tokenize_word(word: &str) -> Result<Token, ParseError> {
-    let word = word.trim();
+impl<'a> Lexer<'a> {
+    pub fn lex(data: &'a str) -> Lexer<'a> {
+        let mut tokenizer = Lexer::default();
+        let mut start: Option<usize> = None;
+        for (i, c) in data.chars().enumerate() {
+            match c {
+                '\n' => {
+                    if start.is_some() {
+                        tokenizer
+                            .tokens
+                            .push(lex_word(&data[start.unwrap()..i]).unwrap());
+                        start = None;
+                    }
+                }
+                ',' => {
+                    if start.is_some() {
+                        tokenizer
+                            .tokens
+                            .push(lex_word(&data[start.unwrap()..i]).unwrap());
+                        start = None;
+                    }
+                    tokenizer.tokens.push(Token::Comma);
+                }
+                ' ' => {
+                    if start.is_none() {
+                        tokenizer.tokens.push(Token::Space);
+                    } else {
+                        tokenizer
+                            .tokens
+                            .push(lex_word(&data[start.unwrap()..i]).unwrap());
+                        start = None;
+                        tokenizer.tokens.push(Token::Space);
+                    }
+                }
+                _ => {
+                    if start.is_none() {
+                        start = Some(i);
+                    }
+                }
+            }
+        }
+        if let Some(start1) = start {
+            tokenizer.tokens.push(lex_word(&data[start1..]).unwrap());
+        }
 
-    if let Ok(keyword) = KeyWord::from_str(word) {
-        return Ok(Token::KeyWord(keyword));
+        tokenizer
     }
-
-    if let Some(idx) = word.find(',') {
-        let reg = Register::from_str(&word[0..idx])
-            .map_err(|_| ParseError::InvalidRegister(word[0..idx].to_string()))?;
-        return Ok(Token::Register(reg));
-    }
-
-    if let Ok(reg) = Register::from_str(word) {
-        return Ok(Token::Register(reg));
-    }
-
-    match Address::parse(word) {
-        Ok(addr) => return Ok(Token::Address(addr)),
-        Err(e) => error!(?e, ?word),
-    }
-
-    if let Ok(num) = Number::parse(word) {
-        return Ok(Token::Number(num));
-    }
-
-    if let Ok(label) = Ident::parse(word) {
-        return Ok(Token::Identifier(label));
-    }
-
-    panic!("{word:?}");
 }
 
-impl<'a> IntoIterator for Tokenizer<'a> {
+impl<'a> IntoIterator for Lexer<'a> {
     type Item = Token<'a>;
-    type IntoIter = TokenizerIterator<'a>;
+    type IntoIter = LexerIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        TokenizerIterator {
+        LexerIterator {
             idx: 0,
             tokenizer: self,
         }
     }
 }
 
-impl<'a> Tokenizer<'a> {
-    pub fn tokenize(data: &'a str) -> Tokenizer<'a> {
-        let mut tokenizer = Tokenizer::default();
-        data.split_whitespace().for_each(|word| {
-            if let Ok(token) = tokenize_word(word) {
-                tokenizer.tokens.push(token);
-            }
-        });
-
-        tokenizer
-    }
-
-    pub fn get(&self, idx: usize) -> Option<&Token> {
-        self.tokens.get(idx)
-    }
-}
-
 #[derive(Debug)]
-pub struct TokenizerIterator<'a> {
-    tokenizer: Tokenizer<'a>,
+pub struct LexerIterator<'a> {
+    tokenizer: Lexer<'a>,
     idx: usize,
 }
 
-impl<'a> Iterator for TokenizerIterator<'a> {
+impl<'a> Iterator for LexerIterator<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.idx < self.tokenizer.tokens.len() {
-            let next = Some(&self.tokenizer.tokens[self.idx]);
+            let next = Some(self.tokenizer.tokens[self.idx].clone());
             self.idx += 1;
-            return next.cloned();
+            return next;
         }
         None
     }
@@ -132,12 +131,10 @@ impl<'a> Number {
                                 _ => todo!(),
                             },
                         },
-                        IntErrorKind::NegOverflow => todo!(),
                         IntErrorKind::Zero => Ok(Number::U16(0)),
                         _ => todo!(),
                     },
                 },
-                IntErrorKind::NegOverflow => todo!(),
                 IntErrorKind::Zero => Ok(Number::U8(0)),
                 _ => todo!(),
             },
@@ -148,13 +145,35 @@ impl<'a> Number {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Address(u32);
 
+impl From<u8> for Address {
+    fn from(value: u8) -> Self {
+        Self(value as u32)
+    }
+}
+
+impl From<u16> for Address {
+    fn from(value: u16) -> Self {
+        Self(value as u32)
+    }
+}
+
+impl From<u32> for Address {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+impl From<i32> for Address {
+    fn from(value: i32) -> Self {
+        Self(value as u32)
+    }
+}
+
 impl Address {
     fn parse(s: &str) -> Result<Self, ParseError<'_>> {
         let s = s.trim();
 
         let mut start = None;
-
-        info!(s);
 
         for (i, ch) in s.chars().enumerate() {
             match ch {
@@ -163,7 +182,7 @@ impl Address {
                 }
                 ']' => {
                     assert!(start.is_some());
-                    info!("{:?}", &s[start.unwrap()..i]);
+                    trace!("{:?}", &s[start.unwrap()..i]);
                     return match s[start.unwrap()..i].parse::<u32>() {
                         Ok(val) => Ok(Address(val)),
                         Err(e) => return Err(ParseError::InvalidNumber(e.kind().clone())),
@@ -178,69 +197,151 @@ impl Address {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Ident<'a> {
-    // tokenizer is not responsible for resolving labels, only for collecting them
-    Ident(&'a str),
-}
-
-impl<'a> Ident<'a> {
-    fn parse(s: &'a str) -> Result<Self, ParseError<'a>> {
-        let s = s.trim();
-
-        // if its not a keyword, it should be an Ident since it also shouldnt be anything else
-        if KeyWord::from_str(s).is_err() {
-            Ok(Ident::Ident(s))
-        } else {
-            Err(ParseError::InvalidIdent(s.to_string()))
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token<'a> {
-    KeyWord(KeyWord),
     Register(Register),
     Number(Number),
     Address(Address),
-    Identifier(Ident<'a>),
+    Identifier(&'a str),
+    Comma,
+    Space,
 }
 
-macro_rules! keywords {
-    ($($variant:ident),* $(,)?) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        #[repr(u8)]
-        #[rustfmt::skip]
-        pub enum KeyWord {
-            $($variant),*
-        }
+fn lex_word(word: &str) -> Result<Token, ParseError> {
+    let mut start = None;
 
-        impl FromStr for KeyWord {
-            type Err = ParseError<'static>;
-
-            fn from_str(value: &str) -> Result<Self, Self::Err> {
-                $(
-                    if value == stringify!($variant).to_lowercase() {
-                        return Ok(KeyWord::$variant);
-                    }
-                )*
-            return Err(ParseError::InvalidKeyWord(value.to_string()));
+    for (i, c) in word.chars().enumerate() {
+        match c {
+            ',' => {
+                if let Some(s) = start {
+                    println!("{:?}", &word[s..s + 1]);
+                }
+                return Ok(Token::Comma);
             }
+            ' ' => return Ok(Token::Space),
+            '[' => start = Some(i),
+            ']' => {
+                return Ok(Token::Address(
+                    Address::parse(&word[start.unwrap()..i + 1]).unwrap(),
+                ))
+            }
+            'a'..='z' => {
+                if start.is_none() {
+                    start = Some(i);
+                }
+            }
+            _ => {}
         }
     }
+
+    if let Ok(reg) = Register::from_str(word) {
+        return Ok(Token::Register(reg));
+    }
+
+    match Address::parse(word) {
+        Ok(addr) => return Ok(Token::Address(addr)),
+        Err(_e) => {}
+    }
+
+    if let Ok(num) = Number::parse(word) {
+        return Ok(Token::Number(num));
+    }
+
+    Ok(Token::Identifier(word))
 }
 
-keywords! {
-    Mov,
-    Add,
-    Load,
-    Jump,
-    Push,
-    Pop,
-    Call,
-    Ret,
-    Halt,
-    Cmp,
-    Inc,
-    Store,
-    Interrupt,
+#[cfg(test)]
+mod lexer_test {
+    use std::str::FromStr;
+
+    use vm_cpu::registers::Register;
+
+    use crate::{
+        tokens::{Address, Lexer, Number},
+        Token,
+    };
+
+    #[test]
+    fn registers() {
+        let regs = [
+            "ip", "sp", "fp", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8",
+        ];
+
+        for reg in regs {
+            assert!(
+                Lexer::lex(reg).tokens.first().unwrap()
+                    == &Token::Register(Register::from_str(reg).unwrap())
+            );
+        }
+    }
+
+    #[test]
+    fn numbers() {
+        let nums = "0 1 100000 val";
+
+        let ast = Lexer::lex(nums).into_iter().collect::<Vec<_>>();
+
+        let expected = [
+            Token::Number(Number::U8(0)),
+            Token::Space,
+            Token::Number(Number::U8(1)),
+            Token::Space,
+            Token::Number(Number::U32(100000)),
+            Token::Space,
+            Token::Identifier("val"),
+        ];
+
+        assert_eq!(ast, expected)
+    }
+
+    #[test]
+    fn address() {
+        let addrs = "[1] [2] 1";
+
+        let ast = Lexer::lex(addrs).into_iter().collect::<Vec<_>>();
+
+        let expected = [
+            Token::Address(Address(1)),
+            Token::Space,
+            Token::Address(Address(2)),
+            Token::Space,
+            Token::Number(Number::U8(1)),
+        ];
+
+        assert_eq!(ast, expected)
+    }
+
+    #[test]
+    fn comma() {
+        let comma = ",";
+
+        let mut tokenizer = Lexer::lex(comma).into_iter();
+
+        assert!(tokenizer.next().unwrap() == Token::Comma);
+    }
+
+    #[test]
+    fn space() {
+        let space = " ";
+
+        let mut tokenizer = Lexer::lex(space).into_iter();
+
+        assert!(tokenizer.next().unwrap() == Token::Space);
+    }
+
+    #[test]
+    fn ident() {
+        let ident = "val foo foo:";
+
+        let tokens = Lexer::lex(ident).into_iter().collect::<Vec<_>>();
+
+        let expected = [
+            Token::Identifier("val"),
+            Token::Space,
+            Token::Identifier("foo"),
+            Token::Space,
+            Token::Identifier("foo:"),
+        ];
+
+        assert_eq!(tokens, expected);
+    }
 }

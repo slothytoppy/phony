@@ -1,5 +1,4 @@
 mod error;
-mod tests;
 mod tokens;
 
 mod parser;
