@@ -891,7 +891,7 @@ mod test {
         let mut cpu = setup_cpu(&[OpCode::StoreU8 as u8, 5, 0, 0, 0, 10]);
         trace!("{:?}", cpu.memory.get(Address::from(0)..10.into()));
 
-        cpu.step().unwrap();
+        let _ = cpu.step().unwrap();
 
         trace!("{:?}", cpu.memory.get(Address::from(0)..10.into()));
 

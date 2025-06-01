@@ -9,16 +9,16 @@ use vm_cpu::memory::Address;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseToken<'a> {
+pub enum AstNode<'a> {
     Token(Token<'a>),
     Label(Address),
     Ident(&'a str),
 }
 
-impl ParseToken<'_> {
+impl AstNode<'_> {
     fn byte_size(&self) -> Option<usize> {
         match self {
-            ParseToken::Token(token) => match token {
+            AstNode::Token(token) => match token {
                 Token::Register(_) => Some(1),
                 Token::Number(number) => match number {
                     crate::tokens::Number::U8(_) => Some(1),
@@ -30,61 +30,47 @@ impl ParseToken<'_> {
                 Token::Comma => None,
                 Token::Space => None,
             },
-            ParseToken::Label(_) => None,
-            ParseToken::Ident(_) => todo!(),
+            AstNode::Label(_) => None,
+            AstNode::Ident(_) => todo!(),
         }
     }
 }
 
-impl<'a> From<Token<'a>> for ParseToken<'a> {
+impl<'a> From<Token<'a>> for AstNode<'a> {
     fn from(value: Token<'a>) -> Self {
-        ParseToken::Token(value)
+        AstNode::Token(value)
     }
 }
 
-impl<'a> From<&Token<'a>> for ParseToken<'a> {
+impl<'a> From<&Token<'a>> for AstNode<'a> {
     fn from(value: &Token<'a>) -> Self {
-        ParseToken::from(value.clone())
+        AstNode::from(value.clone())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Ast<'a> {
+    nodes: Vec<AstNode<'a>>,
+}
+
+impl<'a> Ast<'a> {
+    pub fn push(&mut self, node: AstNode<'a>) {
+        self.nodes.push(node);
+    }
+
+    pub fn get(&mut self, idx: usize) -> Option<&AstNode<'a>> {
+        self.nodes.get(idx)
     }
 }
 
 #[derive(Debug, Default)]
 pub struct Parser<'a> {
-    tokens: Vec<ParseToken<'a>>,
-}
-
-#[derive(Debug)]
-pub struct ParserIterator<'a> {
-    parser: Parser<'a>,
-    idx: usize,
-}
-
-impl<'a> Iterator for ParserIterator<'a> {
-    type Item = ParseToken<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.parser.tokens.get(self.idx).cloned();
-        self.idx += 1;
-
-        item
-    }
-}
-
-impl<'a> IntoIterator for Parser<'a> {
-    type Item = ParseToken<'a>;
-    type IntoIter = ParserIterator<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        ParserIterator {
-            parser: self,
-            idx: 0,
-        }
-    }
+    ast: Ast<'a>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn push(&mut self, token: impl Into<ParseToken<'a>>) {
-        self.tokens.push(token.into());
+    pub fn push(&mut self, token: impl Into<AstNode<'a>>) {
+        self.ast.push(token.into());
     }
 
     #[instrument]
@@ -93,27 +79,27 @@ impl<'a> Parser<'a> {
             return Err(ParseError::EmptyFile);
         }
 
-        let tokenizer = Lexer::lex(data).into_iter();
+        let lexer = Lexer::lex(data).into_iter();
 
         let mut parser = Parser::default();
 
-        info!(?tokenizer);
+        info!(?lexer);
 
         let mut addr: usize = 0;
 
-        for token in tokenizer {
+        for token in lexer {
             match token {
                 Token::Identifier(s) => {
                     if s.ends_with(":") {
-                        parser.push(ParseToken::Label(addr.into()));
+                        parser.push(AstNode::Label(addr.into()));
                         addr += 4;
                     } else {
-                        parser.push(ParseToken::Ident(s));
+                        parser.push(AstNode::Ident(s));
                     }
                 }
 
                 _ => {
-                    let tok = ParseToken::from(token);
+                    let tok = AstNode::from(token);
 
                     if let Some(amount) = tok.byte_size() {
                         addr += amount;
@@ -128,6 +114,35 @@ impl<'a> Parser<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct ParserIterator<'a> {
+    parser: Parser<'a>,
+    idx: usize,
+}
+
+impl<'a> Iterator for ParserIterator<'a> {
+    type Item = AstNode<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.parser.ast.get(self.idx).cloned();
+        self.idx += 1;
+
+        item
+    }
+}
+
+impl<'a> IntoIterator for Parser<'a> {
+    type Item = AstNode<'a>;
+    type IntoIter = ParserIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ParserIterator {
+            parser: self,
+            idx: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use tracing::level_filters::LevelFilter;
@@ -139,7 +154,7 @@ mod test {
         Token,
     };
 
-    use super::{ParseToken, Parser};
+    use super::{AstNode, Parser};
 
     fn init_logger() {
         let _ = tracing_subscriber::FmtSubscriber::builder()
@@ -156,12 +171,12 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("urmom"),
+            AstNode::Ident("urmom"),
             Token::Space.into(),
-            ParseToken::Label(0.into()),
+            AstNode::Label(0.into()),
         ];
 
-        assert_eq!(ast, expected)
+        assert_eq!(ast.as_slice(), expected)
     }
 
     #[test]
@@ -170,9 +185,9 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("call"),
+            AstNode::Ident("call"),
             Token::Space.into(),
-            ParseToken::Ident("urmom"),
+            AstNode::Ident("urmom"),
         ];
 
         assert_eq!(ast, expected)
@@ -184,7 +199,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("add"),
+            AstNode::Ident("add"),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -203,7 +218,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("mov"),
+            AstNode::Ident("mov"),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -222,7 +237,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("mov"),
+            AstNode::Ident("mov"),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -241,7 +256,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("mov"),
+            AstNode::Ident("mov"),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -260,7 +275,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("mov"),
+            AstNode::Ident("mov"),
             Token::Space.into(),
             Token::Address(Address::from(10)).into(),
             Token::Comma.into(),
@@ -279,7 +294,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("mov"),
+            AstNode::Ident("mov"),
             Token::Space.into(),
             Token::Address(Address::from(10)).into(),
             Token::Comma.into(),
@@ -294,14 +309,13 @@ mod test {
     fn cmp() {
         init_logger();
         let src = "cmp r1";
-        let parser = Parser::parse(src).unwrap();
 
-        let ast = parser.into_iter().collect::<Vec<_>>();
+        let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Ident("cmp"),
+            AstNode::Ident("cmp"),
             Token::Space.into(),
-            ParseToken::Token(crate::Token::Register(Register::R1)),
+            AstNode::Token(crate::Token::Register(Register::R1)),
         ];
 
         assert_eq!(ast, expected);
@@ -310,14 +324,13 @@ mod test {
     #[test]
     fn labels_test() {
         let src = "foo:\nbar:\nbaz:";
-        let parser = Parser::parse(src).unwrap();
 
-        let ast = parser.into_iter().collect::<Vec<_>>();
+        let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            ParseToken::Label(0.into()),
-            ParseToken::Label(4.into()),
-            ParseToken::Label(8.into()),
+            AstNode::Label(0.into()),
+            AstNode::Label(4.into()),
+            AstNode::Label(8.into()),
         ];
 
         assert_eq!(ast, expected);
@@ -326,11 +339,10 @@ mod test {
     #[test]
     fn unresolved_label() {
         let src = "foo\nfoo:";
-        let parser = Parser::parse(src).unwrap();
 
-        let ast = parser.into_iter().collect::<Vec<_>>();
+        let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
-        let expected = [ParseToken::Ident("foo"), ParseToken::Label(0.into())];
+        let expected = [AstNode::Ident("foo"), AstNode::Label(0.into())];
 
         assert_eq!(ast, expected);
     }
