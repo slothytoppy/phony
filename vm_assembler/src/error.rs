@@ -2,7 +2,7 @@ use std::{fmt::Display, num::IntErrorKind};
 
 use super::Token;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ParseError<'a> {
     InvalidKeyWord(String),
     InvalidIdent(String),

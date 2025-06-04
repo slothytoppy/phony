@@ -7,7 +7,7 @@ use vm_cpu::registers::Register;
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Lexer<'a> {
-    tokens: Vec<Token<'a>>,
+    pub(crate) tokens: Vec<Token<'a>>,
 }
 
 impl<'a> Lexer<'a> {
@@ -57,40 +57,29 @@ impl<'a> Lexer<'a> {
 
         tokenizer
     }
-}
 
-impl<'a> IntoIterator for Lexer<'a> {
-    type Item = Token<'a>;
-    type IntoIter = LexerIterator<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
+    #[allow(unused)]
+    pub fn iter(&self) -> LexerIterator<'_> {
         LexerIterator {
             idx: 0,
-            tokenizer: self,
+            tokens: &self.tokens,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct LexerIterator<'a> {
-    tokenizer: Lexer<'a>,
+    tokens: &'a [Token<'a>],
     idx: usize,
 }
 
 impl<'a> Iterator for LexerIterator<'a> {
-    type Item = Token<'a>;
+    type Item = &'a Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx < self.tokenizer.tokens.len() {
-            let next = Some(self.tokenizer.tokens[self.idx].clone());
-            self.idx += 1;
-            return next;
-        }
-        None
-    }
-
-    fn count(self) -> usize {
-        self.tokenizer.tokens.len()
+        let item = self.tokens.get(self.idx);
+        self.idx += 1;
+        item
     }
 }
 
@@ -278,16 +267,17 @@ mod lexer_test {
     fn numbers() {
         let nums = "0 1 100000 val";
 
-        let ast = Lexer::lex(nums).into_iter().collect::<Vec<_>>();
+        let lexer = Lexer::lex(nums);
+        let ast = lexer.iter().collect::<Vec<_>>();
 
         let expected = [
-            Token::Number(Number::U8(0)),
-            Token::Space,
-            Token::Number(Number::U8(1)),
-            Token::Space,
-            Token::Number(Number::U32(100000)),
-            Token::Space,
-            Token::Identifier("val"),
+            &Token::Number(Number::U8(0)),
+            &Token::Space,
+            &Token::Number(Number::U8(1)),
+            &Token::Space,
+            &Token::Number(Number::U32(100000)),
+            &Token::Space,
+            &Token::Identifier("val"),
         ];
 
         assert_eq!(ast, expected)
@@ -297,14 +287,15 @@ mod lexer_test {
     fn address() {
         let addrs = "[1] [2] 1";
 
-        let ast = Lexer::lex(addrs).into_iter().collect::<Vec<_>>();
+        let lexer = Lexer::lex(addrs);
+        let ast = lexer.iter().collect::<Vec<_>>();
 
         let expected = [
-            Token::Address(Address(1)),
-            Token::Space,
-            Token::Address(Address(2)),
-            Token::Space,
-            Token::Number(Number::U8(1)),
+            &Token::Address(Address(1)),
+            &Token::Space,
+            &Token::Address(Address(2)),
+            &Token::Space,
+            &Token::Number(Number::U8(1)),
         ];
 
         assert_eq!(ast, expected)
@@ -314,34 +305,37 @@ mod lexer_test {
     fn comma() {
         let comma = ",";
 
-        let mut tokenizer = Lexer::lex(comma).into_iter();
+        let lexer = Lexer::lex(comma);
+        let ast = lexer.iter().collect::<Vec<_>>();
 
-        assert!(tokenizer.next().unwrap() == Token::Comma);
+        assert!(*ast.first().unwrap() == &Token::Comma);
     }
 
     #[test]
     fn space() {
         let space = " ";
 
-        let mut tokenizer = Lexer::lex(space).into_iter();
+        let lexer = Lexer::lex(space);
+        let ast = lexer.iter().collect::<Vec<_>>();
 
-        assert!(tokenizer.next().unwrap() == Token::Space);
+        assert!(*ast.first().unwrap() == &Token::Space);
     }
 
     #[test]
     fn ident() {
         let ident = "val foo foo:";
 
-        let tokens = Lexer::lex(ident).into_iter().collect::<Vec<_>>();
+        let lexer = Lexer::lex(ident);
+        let ast = lexer.iter().collect::<Vec<_>>();
 
         let expected = [
-            Token::Identifier("val"),
-            Token::Space,
-            Token::Identifier("foo"),
-            Token::Space,
-            Token::Identifier("foo:"),
+            &Token::Identifier("val"),
+            &Token::Space,
+            &Token::Identifier("foo"),
+            &Token::Space,
+            &Token::Identifier("foo:"),
         ];
 
-        assert_eq!(tokens, expected);
+        assert_eq!(ast, expected);
     }
 }

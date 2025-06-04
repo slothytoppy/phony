@@ -7,7 +7,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 #[derive(clap::Parser, Debug)]
 struct Args {
     input: PathBuf,
-    output: PathBuf,
 }
 
 fn main() {
@@ -18,6 +17,8 @@ fn main() {
         .try_init();
 
     let args = Args::parse();
+
+    tracing::info!(?args);
 
     let file = std::fs::read_to_string(args.input).expect("failed to read input file");
 

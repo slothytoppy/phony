@@ -634,106 +634,6 @@ impl<M: Memory> Cpu<M> {
 
         Ok(())
     }
-
-    // pub fn write_instructions_to_memory(&mut self, insts: &[Instruction]) -> mem::Result<()> {
-    //     for inst in insts {
-    //         let ip = self.registers[Register::IP];
-    //         let mut ip_addr = Address::from(ip);
-    //         self.memory.write(ip_addr, OpCode::from(inst))?;
-    //         ip_addr = ip_addr.next()?;
-    //         match inst {
-    //             Instruction::MovRegReg(register, register1) => {
-    //                 let reg_val = self.registers.get(*register);
-    //                 let reg1_val = self.registers.get(*register1);
-    //                 info!("{} {} {}", reg_val, reg_val >> 8, reg_val << 8);
-    //                 self.memory.write(ip_addr, reg_val as u8)?;
-    //                 ip_addr = ip_addr.next()?;
-    //                 self.memory.write(ip_addr, reg1_val as u8)?;
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::MovRegNum(register, val) => {
-    //                 self.memory.write(ip_addr, *register)?;
-    //                 ip_addr = ip_addr.next()?;
-    //                 match val {
-    //                     bytecode::U8(val) => self.memory.write(ip_addr, *val)?,
-    //                     bytecode::U16(_) => todo!(),
-    //                     bytecode::U32(_) => todo!(),
-    //                 }
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::PushReg(register) => {
-    //                 self.memory
-    //                     .write(ip_addr, self.registers.get(*register) as u8)?;
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::PushVal(val) => {
-    //                 match val {
-    //                     bytecode::U8(val) => self.memory.write(ip_addr, *val)?,
-    //                     bytecode::U16(_) => todo!(),
-    //                     bytecode::U32(_) => todo!(),
-    //                 }
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::PopReg(register) => {
-    //                 self.memory
-    //                     .write(ip_addr, self.registers.get(*register) as u8)?;
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::AddRegReg(register, register1) => {
-    //                 self.memory
-    //                     .write(ip_addr, self.registers.get(*register) as u8)?;
-    //                 ip_addr = ip_addr.next()?;
-    //                 self.memory
-    //                     .write(ip_addr, self.registers.get(*register1) as u8)?;
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::AddRegNum(register, val) => {
-    //                 self.memory
-    //                     .write(ip_addr, self.registers.get(*register) as u8)?;
-    //                 ip_addr = ip_addr.next()?;
-    //                 match val {
-    //                     bytecode::U8(val) => self.memory.write(ip_addr, *val)?,
-    //                     bytecode::U16(_) => todo!(),
-    //                     bytecode::U32(_) => todo!(),
-    //                 }
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::Jump(address) => {
-    //                 self.memory.write(ip_addr, u8::from(*address))?;
-    //                 _ = ip_addr.next()?;
-    //             }
-    //             Instruction::Load(_register, _address) => {
-    //                 todo!()
-    //                 //self.memory.write(ip_addr, *register)?;
-    //                 //ip_addr = ip_addr.next()?;
-    //                 //self.memory.write(ip_addr, u8::from(*address))?;
-    //                 //_ = ip_addr.next()?;
-    //             }
-    //             Instruction::Call(address) => {
-    //                 self.memory.write(ip_addr, u8::from(*address))?;
-    //                 ip_addr.next()?;
-    //                 todo!()
-    //             }
-    //             Instruction::Halt => {}
-    //             Instruction::Ret => {}
-    //             Instruction::MovRegMem(_register, _address) => todo!(),
-    //             Instruction::MovMemMem(_address, _address1) => todo!(),
-    //             Instruction::MovMemReg(_address, _register) => todo!(),
-    //             Instruction::MovMemVal(_address, _bytecode) => todo!(),
-    //             Instruction::AddRegMem(_register, _address) => todo!(),
-    //             Instruction::IncReg(_register) => todo!(),
-    //             Instruction::IncMem(_address) => todo!(),
-    //             Instruction::PushMem(_address) => todo!(),
-    //             Instruction::Interrupt(_bytecode) => todo!(),
-    //             Instruction::InterruptReg(_register) => todo!(),
-    //             Instruction::StoreReg(_address, _register) => todo!(),
-    //             Instruction::StoreVal(_address, _bytecode) => todo!(),
-    //         }
-    //         self.registers[Register::IP] += OpCode::from(inst).increment_amount() as u32;
-    //     }
-    //     self.registers[Register::IP] = 0;
-    //     Ok(())
-    // }
 }
 
 #[cfg(test)]
@@ -809,12 +709,6 @@ mod test {
         ]);
 
         cpu.execute();
-
-        // info!(
-        //     "{:?}",
-        //     cpu.memory
-        //         .get(Address::from(65000)..Address::from(u16::MAX as usize - 1))
-        // );
 
         assert_eq!(cpu.read_mem_u8(u16::MAX as usize - 1).unwrap(), 10);
     }

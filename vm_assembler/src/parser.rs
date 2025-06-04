@@ -6,6 +6,8 @@ use tracing::info;
 use tracing::instrument;
 use vm_cpu::memory::Address;
 
+use std::collections::HashMap;
+use std::fmt::Display;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,6 +15,7 @@ pub enum AstNode<'a> {
     Token(Token<'a>),
     Label(Address),
     Ident(&'a str),
+    KeyWord(KeyWord),
 }
 
 impl AstNode<'_> {
@@ -25,14 +28,21 @@ impl AstNode<'_> {
                     crate::tokens::Number::U16(_) => Some(2),
                     crate::tokens::Number::U32(_) => Some(4),
                 },
-                Token::Address(_) => Some(4),
-                Token::Identifier(s) => Some(s.len()),
+                Token::Address(_addr) => Some(4),
+                Token::Identifier(_ident) => None,
                 Token::Comma => None,
                 Token::Space => None,
             },
             AstNode::Label(_) => None,
             AstNode::Ident(_) => todo!(),
+            AstNode::KeyWord(_) => None,
         }
+    }
+}
+
+impl<'a> From<KeyWord> for AstNode<'a> {
+    fn from(value: KeyWord) -> Self {
+        AstNode::KeyWord(value)
     }
 }
 
@@ -44,7 +54,7 @@ impl<'a> From<Token<'a>> for AstNode<'a> {
 
 impl<'a> From<&Token<'a>> for AstNode<'a> {
     fn from(value: &Token<'a>) -> Self {
-        AstNode::from(value.clone())
+        AstNode::Token(value.clone())
     }
 }
 
@@ -58,14 +68,46 @@ impl<'a> Ast<'a> {
         self.nodes.push(node);
     }
 
-    pub fn get(&mut self, idx: usize) -> Option<&AstNode<'a>> {
+    pub fn get(&self, idx: usize) -> Option<&AstNode<'a>> {
         self.nodes.get(idx)
+    }
+
+    #[allow(unused)]
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut AstNode<'a>> {
+        self.nodes.get_mut(idx)
+    }
+
+    pub fn set(&mut self, idx: usize, node: AstNode<'a>) {
+        if let Some(old_node) = self.nodes.get_mut(idx) {
+            *old_node = node;
+        }
     }
 }
 
 #[derive(Debug, Default)]
 pub struct Parser<'a> {
     ast: Ast<'a>,
+    resolved_labels: HashMap<&'a str, Address>,
+}
+
+impl Display for Parser<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Ast Nodes:")?;
+        for node in &self.ast.nodes {
+            match node {
+                AstNode::Token(token) => match token {
+                    Token::Comma | Token::Space => {}
+                    _ => writeln!(f, "{token:?}")?,
+                },
+                _ => writeln!(f, "{node:?}")?,
+            }
+        }
+        writeln!(f, "Resolved Labels:")?;
+        for key in self.resolved_labels.iter() {
+            writeln!(f, "{key:?}")?
+        }
+        Ok(())
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -79,28 +121,34 @@ impl<'a> Parser<'a> {
             return Err(ParseError::EmptyFile);
         }
 
-        let lexer = Lexer::lex(data).into_iter();
+        let lexer = Lexer::lex(data);
 
         let mut parser = Parser::default();
 
-        info!(?lexer);
-
         let mut addr: usize = 0;
 
-        for token in lexer {
+        for token in lexer.tokens.iter() {
             match token {
-                Token::Identifier(s) => {
-                    if s.ends_with(":") {
-                        parser.push(AstNode::Label(addr.into()));
-                        addr += 4;
-                    } else {
-                        parser.push(AstNode::Ident(s));
-                    }
-                }
+                Token::Identifier(s) => match KeyWord::from_str(s) {
+                    Ok(keyword) => parser.push(AstNode::KeyWord(keyword)),
+                    Err(e) => {
+                        match e {
+                            ParseError::InvalidKeyWord(_) => {}
+                            _ => panic!("{e:?}"),
+                        };
 
+                        if s.ends_with(":") {
+                            parser
+                                .resolved_labels
+                                .insert(&s[0..s.len().saturating_sub(1)], Address::from(addr));
+                            addr += 4;
+                        } else {
+                            parser.push(AstNode::Ident(s));
+                        }
+                    }
+                },
                 _ => {
                     let tok = AstNode::from(token);
-
                     if let Some(amount) = tok.byte_size() {
                         addr += amount;
                     }
@@ -109,6 +157,26 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+
+        for idx in 0..parser.ast.nodes.len() {
+            let Some(token) = parser.ast.get(idx) else {
+                break;
+            };
+
+            match token {
+                AstNode::Label(address) => info!(?address),
+                AstNode::Ident(ident) => {
+                    if let Some(addr) = parser.resolved_labels.get(ident) {
+                        info!(?ident, ?addr);
+                        info!(?token);
+                        parser.ast.set(idx, AstNode::Label(*addr));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        info!(%parser);
 
         Ok(parser)
     }
@@ -150,6 +218,7 @@ mod test {
     use vm_cpu::registers::Register;
 
     use crate::{
+        parser::KeyWord,
         tokens::{Address, Number},
         Token,
     };
@@ -171,9 +240,8 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("urmom"),
+            AstNode::Label(vm_cpu::memory::Address::from(0)),
             Token::Space.into(),
-            AstNode::Label(0.into()),
         ];
 
         assert_eq!(ast.as_slice(), expected)
@@ -185,7 +253,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("call"),
+            AstNode::KeyWord(KeyWord::Call),
             Token::Space.into(),
             AstNode::Ident("urmom"),
         ];
@@ -199,7 +267,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("add"),
+            AstNode::KeyWord(KeyWord::Add),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -218,7 +286,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("mov"),
+            AstNode::KeyWord(KeyWord::Mov),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -237,7 +305,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("mov"),
+            AstNode::KeyWord(KeyWord::Mov),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -256,7 +324,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("mov"),
+            AstNode::KeyWord(KeyWord::Mov),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
@@ -275,9 +343,9 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("mov"),
+            AstNode::KeyWord(KeyWord::Mov),
             Token::Space.into(),
-            Token::Address(Address::from(10)).into(),
+            AstNode::Token(Token::Address(10.into())),
             Token::Comma.into(),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
@@ -294,9 +362,9 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("mov"),
+            AstNode::KeyWord(KeyWord::Mov),
             Token::Space.into(),
-            Token::Address(Address::from(10)).into(),
+            AstNode::Token(Token::Address(10.into())),
             Token::Comma.into(),
             Token::Space.into(),
             Token::Number(Number::U8(10)).into(),
@@ -313,7 +381,7 @@ mod test {
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Ident("cmp"),
+            AstNode::KeyWord(KeyWord::Cmp),
             Token::Space.into(),
             AstNode::Token(crate::Token::Register(Register::R1)),
         ];
@@ -323,14 +391,14 @@ mod test {
 
     #[test]
     fn labels_test() {
-        let src = "foo:\nbar:\nbaz:";
+        let src = "foo:\nbar:\nbaz:\nfoo\nbar\nbaz";
 
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
         let expected = [
-            AstNode::Label(0.into()),
-            AstNode::Label(4.into()),
-            AstNode::Label(8.into()),
+            AstNode::Label(vm_cpu::memory::Address::from(0)),
+            AstNode::Label(vm_cpu::memory::Address::from(4)),
+            AstNode::Label(vm_cpu::memory::Address::from(8)),
         ];
 
         assert_eq!(ast, expected);
@@ -338,11 +406,11 @@ mod test {
 
     #[test]
     fn unresolved_label() {
-        let src = "foo\nfoo:";
+        let src = "foo";
 
         let ast = Parser::parse(src).unwrap().into_iter().collect::<Vec<_>>();
 
-        let expected = [AstNode::Ident("foo"), AstNode::Label(0.into())];
+        let expected = [AstNode::Ident("foo")];
 
         assert_eq!(ast, expected);
     }
