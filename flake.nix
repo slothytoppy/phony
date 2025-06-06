@@ -16,17 +16,12 @@
       {
         devShells.default = with pkgs; mkShell {
           buildInputs = [
-            openssl
             pkg-config
             eza
-            fd
+            rustup
             rust-bin.stable.latest.default
+            tokei
           ];
-
-          shellHook = ''
-            alias ls=eza
-            alias find=fd
-          '';
         };
       }
     );

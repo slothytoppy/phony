@@ -34,7 +34,7 @@ impl AstNode<'_> {
                 Token::Space => None,
             },
             AstNode::Label(_) => None,
-            AstNode::Ident(_) => todo!(),
+            AstNode::Ident(_) => None,
             AstNode::KeyWord(_) => None,
         }
     }
@@ -48,13 +48,11 @@ impl<'a> From<KeyWord> for AstNode<'a> {
 
 impl<'a> From<Token<'a>> for AstNode<'a> {
     fn from(value: Token<'a>) -> Self {
-        AstNode::Token(value)
-    }
-}
-
-impl<'a> From<&Token<'a>> for AstNode<'a> {
-    fn from(value: &Token<'a>) -> Self {
-        AstNode::Token(value.clone())
+        match value {
+            Token::Address(address) => AstNode::Label(vm_cpu::memory::Address::from(address.0)),
+            Token::Identifier(ident) => AstNode::Ident(ident),
+            _ => AstNode::Token(value),
+        }
     }
 }
 
@@ -148,7 +146,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 _ => {
-                    let tok = AstNode::from(token);
+                    let tok = AstNode::from(token.clone());
                     if let Some(amount) = tok.byte_size() {
                         addr += amount;
                     }
@@ -215,13 +213,9 @@ impl<'a> IntoIterator for Parser<'a> {
 mod test {
     use tracing::level_filters::LevelFilter;
     use tracing_subscriber::util::SubscriberInitExt;
-    use vm_cpu::registers::Register;
+    use vm_cpu::{memory::Address, registers::Register};
 
-    use crate::{
-        parser::KeyWord,
-        tokens::{Address, Number},
-        Token,
-    };
+    use crate::{parser::KeyWord, tokens::Number, Token};
 
     use super::{AstNode, Parser};
 
@@ -329,7 +323,7 @@ mod test {
             Token::Register(Register::R1).into(),
             Token::Comma.into(),
             Token::Space.into(),
-            Token::Address(Address::from(10)).into(),
+            AstNode::Label(Address::from(10)),
         ];
 
         assert_eq!(ast, expected)
@@ -345,7 +339,7 @@ mod test {
         let expected = [
             AstNode::KeyWord(KeyWord::Mov),
             Token::Space.into(),
-            AstNode::Token(Token::Address(10.into())),
+            AstNode::Label(Address::from(10)),
             Token::Comma.into(),
             Token::Space.into(),
             Token::Register(Register::R1).into(),
@@ -364,7 +358,7 @@ mod test {
         let expected = [
             AstNode::KeyWord(KeyWord::Mov),
             Token::Space.into(),
-            AstNode::Token(Token::Address(10.into())),
+            AstNode::Label(Address::from(10)),
             Token::Comma.into(),
             Token::Space.into(),
             Token::Number(Number::U8(10)).into(),

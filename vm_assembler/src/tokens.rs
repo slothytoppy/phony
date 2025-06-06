@@ -132,7 +132,7 @@ impl<'a> Number {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Address(u32);
+pub struct Address(pub u32);
 
 impl From<u8> for Address {
     fn from(value: u8) -> Self {

@@ -1,7 +1,8 @@
 [workspace]
-members = ["vm_cpu", "vm_assembler"]
-default-members = ["vm_assembler"]
+members = ["vm_cpu", "vm_assembler", "vm_lang"]
+default-members = ["vm_lang"]
 resolver = "2"
 
 [workspace.dependencies]
 vm_cpu = { path = "vm_cpu" }
+vm_assembler = { path = "vm_assembler" }
