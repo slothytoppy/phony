@@ -44,35 +44,6 @@ pub enum Node {
     U32(u32),
 }
 
-impl Node {
-    fn skip_amount(&self) -> Option<usize> {
-        match self {
-            Node::U8(val) => match val {
-                0..=9 => Some(1),
-                10..=99 => Some(2),
-                _ => Some(3),
-            },
-            Node::U16(val) => match val {
-                0..=9 => Some(1),
-                10..=99 => Some(2),
-                100..=999 => Some(3),
-                1000..=9999 => Some(4),
-                10000..=u16::MAX => Some(5),
-            },
-            Node::U32(val) => match val {
-                0..=9 => Some(1),
-                10..=99 => Some(2),
-                100..=999 => Some(3),
-                1000..=9999 => Some(4),
-                10000..=99999 => Some(5),
-                100_000..=999_999 => Some(6),
-                1_000_000..=u32::MAX => Some(7),
-            },
-            _ => None,
-        }
-    }
-}
-
 #[derive(Default, Debug)]
 pub struct Ast {
     nodes: Vec<Node>,
@@ -127,9 +98,6 @@ impl Parser {
                     },
                 };
 
-                if let Some(amount) = peeked_node.skip_amount() {
-                    idx += amount;
-                }
                 info!(?peeked_node);
                 ast.push(peeked_node);
             } else {
@@ -139,24 +107,11 @@ impl Parser {
                     Token::EqSign => Node::Eq,
                     Token::Space => Node::Space,
                     Token::Number(val) => match val {
-                        crate::lexer::Number::U8(num) => {
-                            idx += 3;
-                            Node::U8(*num)
-                        }
-                        crate::lexer::Number::U16(num) => {
-                            idx += 4;
-                            Node::U16(*num)
-                        }
-                        crate::lexer::Number::U32(num) => {
-                            idx += 8;
-                            Node::U32(*num)
-                        }
+                        crate::lexer::Number::U8(num) => Node::U8(*num),
+                        crate::lexer::Number::U16(num) => Node::U16(*num),
+                        crate::lexer::Number::U32(num) => Node::U32(*num),
                     },
                 };
-
-                if let Some(amount) = node.skip_amount() {
-                    idx += amount;
-                }
 
                 ast.push(node);
             }

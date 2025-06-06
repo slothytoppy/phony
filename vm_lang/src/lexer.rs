@@ -36,7 +36,7 @@ pub struct Lexer<'a> {
     data: &'a str,
 }
 
-fn lex_number(src: &str) -> Number {
+fn lex_number(src: &str) -> (Number, usize) {
     let mut start = None;
     for (i, ch) in src.chars().enumerate() {
         match ch {
@@ -45,11 +45,19 @@ fn lex_number(src: &str) -> Number {
                     start = Some(i)
                 }
             }
-            _ => return Number::U32(src[start.unwrap()..i].parse::<u32>().unwrap()),
+            _ => {
+                return (
+                    Number::U32(src[start.unwrap()..i].parse::<u32>().unwrap()),
+                    i,
+                )
+            }
         }
     }
 
-    Number::U32(src[start.unwrap()..].parse::<u32>().unwrap())
+    (
+        Number::U32(src[start.unwrap()..].parse::<u32>().unwrap()),
+        src.len(),
+    )
 }
 
 impl<'a> Lexer<'a> {
@@ -63,13 +71,17 @@ impl<'a> Lexer<'a> {
         let mut idx = 0;
         let mut chars = self.data.chars().enumerate();
         loop {
-            let Some((i, ch)) = chars.next() else { break };
+            let Some((i, ch)) = chars.nth(idx) else { break };
             let tok = match ch {
                 ' ' => Token::Space,
                 '>' => Token::RCarrot,
                 '<' => Token::LCarrot,
                 '=' => Token::EqSign,
-                '0'..='9' => Token::Number(lex_number(&self.data[i..])),
+                '0'..='9' => {
+                    let (num, amount) = lex_number(&self.data[i..]);
+                    idx += amount;
+                    Token::Number(num)
+                }
                 _ => return Err(LexError::InvalidToken(ch.to_string())),
             };
 
