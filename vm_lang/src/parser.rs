@@ -35,6 +35,7 @@ pub struct Parser<'a> {
 
 #[derive(PartialEq, Debug)]
 pub enum Node<'a> {
+    Assign,
     Eq,
     Gt,
     Gte,
@@ -47,6 +48,19 @@ pub enum Node<'a> {
     Lparen,
     Rparen,
     Ident(&'a str),
+    Types(Types),
+    Add,
+    Sub,
+    Mult,
+    Div,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum Types {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    Bool(bool),
 }
 
 #[derive(Default, Debug)]
@@ -79,48 +93,18 @@ impl<'a> Parser<'a> {
 
             if let Some(next_token) = tokens.get(idx + 1) {
                 info!(?token, ?next_token);
-                let peeked_node = match (token, next_token) {
-                    (Token::LCarrot, Token::EqSign) => {
-                        idx += 1;
-                        Node::Lte
-                    }
-                    (Token::RCarrot, Token::EqSign) => {
-                        idx += 1;
-                        Node::Gte
-                    }
-                    _ => match token {
-                        Token::LCarrot => Node::Lt,
-                        Token::RCarrot => Node::Gt,
-                        Token::EqSign => Node::Eq,
-                        Token::Space => Node::Space,
-                        Token::Number(val) => match val {
-                            crate::lexer::Number::U8(num) => Node::U8(*num),
-                            crate::lexer::Number::U16(num) => Node::U16(*num),
-                            crate::lexer::Number::U32(num) => Node::U32(*num),
-                        },
-                        Token::Lparen => Node::Lparen,
-                        Token::Rparen => Node::Rparen,
-                        Token::Ident(ident) => Node::Ident(ident),
-                    },
-                };
+                let peeked_node = peeked_tokens(token, Some(next_token));
+                match peeked_node {
+                    Node::Eq => idx += 1,
+                    Node::Gte => idx += 1,
+                    Node::Lte => idx += 1,
+                    _ => {}
+                }
 
                 info!(?peeked_node);
                 ast.push(peeked_node);
             } else {
-                let node = match token {
-                    Token::LCarrot => Node::Lt,
-                    Token::RCarrot => Node::Gt,
-                    Token::EqSign => Node::Eq,
-                    Token::Space => Node::Space,
-                    Token::Number(val) => match val {
-                        crate::lexer::Number::U8(num) => Node::U8(*num),
-                        crate::lexer::Number::U16(num) => Node::U16(*num),
-                        crate::lexer::Number::U32(num) => Node::U32(*num),
-                    },
-                    Token::Lparen => Node::Lparen,
-                    Token::Rparen => Node::Rparen,
-                    Token::Ident(ident) => Node::Ident(ident),
-                };
+                let node = peeked_tokens(token, None);
 
                 ast.push(node);
             }
@@ -132,8 +116,45 @@ impl<'a> Parser<'a> {
     }
 }
 
+fn peeked_tokens<'a>(token: &Token<'a>, peeked_token: Option<&Token<'a>>) -> Node<'a> {
+    match (token, peeked_token) {
+        (Token::LCarrot, Some(Token::EqSign)) => Node::Lte,
+        (Token::RCarrot, Some(Token::EqSign)) => Node::Gte,
+        (Token::EqSign, Some(Token::EqSign)) => Node::Eq,
+        _ => match token {
+            Token::LCarrot => Node::Lt,
+            Token::RCarrot => Node::Gt,
+            Token::EqSign => Node::Assign,
+            Token::Space => Node::Space,
+            Token::Number(val) => {
+                if let Ok(val) = val.parse::<u8>() {
+                    return Node::U8(val);
+                }
+                if let Ok(val) = val.parse::<u16>() {
+                    return Node::U16(val);
+                }
+                if let Ok(val) = val.parse::<u32>() {
+                    Node::U32(val)
+                } else {
+                    unreachable!()
+                }
+            }
+            Token::Lparen => Node::Lparen,
+            Token::Rparen => Node::Rparen,
+            Token::Ident(ident) => Node::Ident(ident),
+            Token::Plus => Node::Add,
+            Token::Sub => Node::Sub,
+            Token::Mult => Node::Mult,
+            Token::Div => Node::Div,
+        },
+    }
+}
+
 #[cfg(test)]
 mod test {
+
+    use tracing::{info, level_filters::LevelFilter};
+    use tracing_subscriber::util::SubscriberInitExt;
 
     use crate::{lexer::Lexer, parser::Node};
 
@@ -144,6 +165,12 @@ mod test {
 
     impl TestRunner {
         pub fn run(src: &str) -> Result<Ast, ParserError> {
+            let _ = tracing_subscriber::FmtSubscriber::builder()
+                .with_ansi(true)
+                .with_max_level(LevelFilter::INFO)
+                .finish()
+                .try_init();
+
             let lexer = Lexer::new(src);
             let ast = lexer.lex()?.to_vec();
             Parser::default().parse(ast)
@@ -204,13 +231,13 @@ mod test {
 
     #[test]
     pub fn eq() {
-        assert_eq!(TestRunner::run("=").unwrap().nodes, [Node::Eq]);
+        assert_eq!(TestRunner::run("==").unwrap().nodes, [Node::Eq]);
     }
 
     #[test]
     pub fn eq_space() {
         assert_eq!(
-            TestRunner::run("= ").unwrap().nodes,
+            TestRunner::run("== ").unwrap().nodes,
             [Node::Eq, Node::Space]
         );
     }
@@ -236,5 +263,53 @@ mod test {
                 Node::Ident("o")
             ]
         );
+    }
+
+    #[test]
+    fn add() {
+        assert_eq!(
+            TestRunner::run("1 + 2").unwrap().nodes,
+            [
+                Node::U8(1),
+                Node::Space,
+                Node::Add,
+                Node::Space,
+                Node::U8(2)
+            ]
+        )
+    }
+
+    #[test]
+    fn sub() {
+        assert_eq!(
+            TestRunner::run("1 - 2").unwrap().nodes,
+            [
+                Node::U8(1),
+                Node::Space,
+                Node::Sub,
+                Node::Space,
+                Node::U8(2)
+            ]
+        )
+    }
+
+    #[test]
+    fn mult() {
+        assert_eq!(
+            TestRunner::run("1 * 2").unwrap().nodes,
+            [
+                Node::U8(1),
+                Node::Space,
+                Node::Mult,
+                Node::Space,
+                Node::U8(2)
+            ]
+        )
+    }
+    #[test]
+    fn div() {
+        let nodes = TestRunner::run("1/2").unwrap().nodes;
+        info!(?nodes);
+        assert_eq!(nodes, [Node::U8(1), Node::Div, Node::U8(2)])
     }
 }
