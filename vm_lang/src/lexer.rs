@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Range};
+use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum LexError {
@@ -15,16 +15,19 @@ impl Display for LexError {
     }
 }
 
-#[derive(Debug)]
-pub enum Token {
+#[derive(Clone, Debug)]
+pub enum Token<'a> {
     LCarrot,
     RCarrot,
     EqSign,
     Space,
     Number(Number),
+    Lparen,
+    Rparen,
+    Ident(&'a str),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Number {
     U8(u8),
     U16(u16),
@@ -46,18 +49,41 @@ fn lex_number(src: &str) -> (Number, usize) {
                 }
             }
             _ => {
-                return (
-                    Number::U32(src[start.unwrap()..i].parse::<u32>().unwrap()),
-                    i,
-                )
+                if let Ok(num) = src[start.unwrap()..i].parse::<u8>() {
+                    return (Number::U8(num), i);
+                } else if let Ok(num) = src[start.unwrap()..i].parse::<u16>() {
+                    return (Number::U16(num), i);
+                } else if let Ok(num) = src[start.unwrap()..i].parse::<u32>() {
+                    return (Number::U32(num), i);
+                }
             }
         }
     }
 
-    (
-        Number::U32(src[start.unwrap()..].parse::<u32>().unwrap()),
-        src.len(),
-    )
+    if let Ok(num) = src[start.unwrap()..].parse::<u8>() {
+        (Number::U8(num), src.len())
+    } else if let Ok(num) = src[start.unwrap()..].parse::<u16>() {
+        (Number::U16(num), src.len())
+    } else if let Ok(num) = src[start.unwrap()..].parse::<u32>() {
+        (Number::U32(num), src.len())
+    } else {
+        panic!()
+    }
+}
+
+fn lex_ident(src: &str) -> &str {
+    let mut start = None;
+    for (i, ch) in src.chars().enumerate() {
+        match ch {
+            'a'..='z' | 'A'..='Z' => {
+                if start.is_none() {
+                    start = Some(i)
+                }
+            }
+            _ => return &src[start.unwrap()..i],
+        }
+    }
+    src
 }
 
 impl<'a> Lexer<'a> {
@@ -65,11 +91,12 @@ impl<'a> Lexer<'a> {
         Self { data }
     }
 
-    pub fn lex(&self) -> Result<Vec<Token>, LexError> {
+    pub fn lex(self) -> Result<Vec<Token<'a>>, LexError> {
         let mut tokens = Vec::default();
 
         let mut idx = 0;
         let mut chars = self.data.chars().enumerate();
+
         loop {
             let Some((i, ch)) = chars.nth(idx) else { break };
             let tok = match ch {
@@ -82,25 +109,18 @@ impl<'a> Lexer<'a> {
                     idx += amount;
                     Token::Number(num)
                 }
+                'a'..='z' | 'A'..='Z' => {
+                    let ident = lex_ident(&self.data[i..]);
+                    idx += ident.len().saturating_sub(1);
+                    Token::Ident(ident)
+                }
+                '(' => Token::Lparen,
+                ')' => Token::Rparen,
                 _ => return Err(LexError::InvalidToken(ch.to_string())),
             };
 
             tokens.push(tok);
         }
-        // for ch in self.data.chars() {
-        //     let tok = match ch {
-        //         ' ' => Token::Space,
-        //         '>' => Token::RCarrot,
-        //         '<' => Token::LCarrot,
-        //         '=' => Token::EqSign,
-        //         '0'..='9' => match ch {
-        //             _ => unreachable!(),
-        //         },
-        //         _ => return Err(LexError::InvalidToken(ch.to_string())),
-        //     };
-        //
-        //     tokens.push(tok);
-        // }
 
         Ok(tokens)
     }

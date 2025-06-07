@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use lexer::Lexer;
 use tracing::info;
 
 mod lexer;
@@ -17,8 +18,10 @@ fn main() {
     // let file = std::fs::read_to_string(args.input).expect("failed to read input file");
     let data = r#"= >= <= == > < 12345"#;
 
+    let tokens = Lexer::new(data).lex().unwrap();
+
     let ast = parser::Parser::default()
-        .parse(data)
+        .parse(tokens)
         .expect("failed to parse input file");
 
     info!(?ast);
