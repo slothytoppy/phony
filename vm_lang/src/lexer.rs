@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use tracing::info;
+
 #[derive(Debug)]
 pub enum LexError {
     InvalidToken(String),
@@ -15,23 +17,20 @@ impl Display for LexError {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token<'a> {
     LCarrot,
     RCarrot,
     EqSign,
     Space,
-    Number(Number),
+    Number(&'a str),
     Lparen,
     Rparen,
     Ident(&'a str),
-}
-
-#[derive(Clone, Debug)]
-pub enum Number {
-    U8(u8),
-    U16(u16),
-    U32(u32),
+    Plus,
+    Sub,
+    Mult,
+    Div,
 }
 
 #[derive(Debug)]
@@ -39,7 +38,7 @@ pub struct Lexer<'a> {
     data: &'a str,
 }
 
-fn lex_number(src: &str) -> (Number, usize) {
+fn lex_number(src: &str) -> (Token, usize) {
     let mut start = None;
     for (i, ch) in src.chars().enumerate() {
         match ch {
@@ -49,26 +48,12 @@ fn lex_number(src: &str) -> (Number, usize) {
                 }
             }
             _ => {
-                if let Ok(num) = src[start.unwrap()..i].parse::<u8>() {
-                    return (Number::U8(num), i);
-                } else if let Ok(num) = src[start.unwrap()..i].parse::<u16>() {
-                    return (Number::U16(num), i);
-                } else if let Ok(num) = src[start.unwrap()..i].parse::<u32>() {
-                    return (Number::U32(num), i);
-                }
+                return (Token::Number(&src[start.unwrap()..i]), i);
             }
         }
     }
 
-    if let Ok(num) = src[start.unwrap()..].parse::<u8>() {
-        (Number::U8(num), src.len())
-    } else if let Ok(num) = src[start.unwrap()..].parse::<u16>() {
-        (Number::U16(num), src.len())
-    } else if let Ok(num) = src[start.unwrap()..].parse::<u32>() {
-        (Number::U32(num), src.len())
-    } else {
-        panic!()
-    }
+    (Token::Number(&src[start.unwrap()..]), src.len())
 }
 
 fn lex_ident(src: &str) -> &str {
@@ -91,37 +76,111 @@ impl<'a> Lexer<'a> {
         Self { data }
     }
 
+    #[tracing::instrument]
     pub fn lex(self) -> Result<Vec<Token<'a>>, LexError> {
-        let mut tokens = Vec::default();
+        let mut tokens = Vec::new();
 
         let mut idx = 0;
+
         let mut chars = self.data.chars().enumerate();
 
         loop {
             let Some((i, ch)) = chars.nth(idx) else { break };
+            info!(?ch);
             let tok = match ch {
                 ' ' => Token::Space,
                 '>' => Token::RCarrot,
                 '<' => Token::LCarrot,
                 '=' => Token::EqSign,
+                '(' => Token::Lparen,
+                ')' => Token::Rparen,
+                '+' => Token::Plus,
+                '-' => Token::Sub,
+                '*' => Token::Mult,
+                '/' => Token::Div,
                 '0'..='9' => {
                     let (num, amount) = lex_number(&self.data[i..]);
-                    idx += amount;
-                    Token::Number(num)
+                    idx += amount.saturating_sub(1);
+                    num
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let ident = lex_ident(&self.data[i..]);
                     idx += ident.len().saturating_sub(1);
                     Token::Ident(ident)
                 }
-                '(' => Token::Lparen,
-                ')' => Token::Rparen,
+
                 _ => return Err(LexError::InvalidToken(ch.to_string())),
             };
 
             tokens.push(tok);
         }
 
+        info!(?tokens);
+
         Ok(tokens)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{Lexer, Token};
+
+    fn lex(data: &str) -> Vec<Token> {
+        Lexer::new(data).lex().unwrap()
+    }
+
+    #[test]
+    fn add() {
+        assert_eq!(lex("+"), [Token::Plus])
+    }
+
+    #[test]
+    fn sub() {
+        assert_eq!(lex("-"), [Token::Sub])
+    }
+
+    #[test]
+    fn mult() {
+        assert_eq!(lex("*"), [Token::Mult])
+    }
+
+    #[test]
+    fn div() {
+        assert_eq!(lex("/"), [Token::Div])
+    }
+
+    #[test]
+    fn lcarrot() {
+        assert_eq!(lex("<"), [Token::LCarrot])
+    }
+
+    #[test]
+    fn rcarrot() {
+        assert_eq!(lex(">"), [Token::RCarrot])
+    }
+
+    #[test]
+    fn lparen() {
+        assert_eq!(lex("("), [Token::Lparen])
+    }
+
+    #[test]
+    fn rparen() {
+        assert_eq!(lex(")"), [Token::Rparen])
+    }
+
+    #[test]
+    fn eq() {
+        assert_eq!(lex("="), [Token::EqSign])
+    }
+
+    #[test]
+    fn number() {
+        assert_eq!(lex("123456"), [Token::Number("123456")])
+    }
+
+    #[test]
+    fn ident() {
+        assert_eq!(lex("hello"), [Token::Ident("hello")])
     }
 }
