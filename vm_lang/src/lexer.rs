@@ -38,6 +38,7 @@ pub struct Lexer<'a> {
     data: &'a str,
 }
 
+#[tracing::instrument]
 fn lex_number(src: &str) -> (Token, usize) {
     let mut start = None;
     for (i, ch) in src.chars().enumerate() {
@@ -56,6 +57,7 @@ fn lex_number(src: &str) -> (Token, usize) {
     (Token::Number(&src[start.unwrap()..]), src.len())
 }
 
+#[tracing::instrument]
 fn lex_ident(src: &str) -> &str {
     let mut start = None;
     for (i, ch) in src.chars().enumerate() {
@@ -65,7 +67,14 @@ fn lex_ident(src: &str) -> &str {
                     start = Some(i)
                 }
             }
-            _ => return &src[start.unwrap()..i],
+            '0'..='9' => {
+                if start.is_none() {
+                    panic!()
+                }
+            }
+            _ => {
+                return &src[start.unwrap()..i];
+            }
         }
     }
     src
@@ -82,10 +91,10 @@ impl<'a> Lexer<'a> {
 
         let mut idx = 0;
 
-        let mut chars = self.data.chars().enumerate();
+        let mut chars = self.data.chars().collect::<Vec<_>>();
 
         loop {
-            let Some((i, ch)) = chars.nth(idx) else { break };
+            let Some(ch) = chars.get(idx) else { break };
             info!(?ch);
             let tok = match ch {
                 ' ' => Token::Space,
@@ -99,18 +108,19 @@ impl<'a> Lexer<'a> {
                 '*' => Token::Mult,
                 '/' => Token::Div,
                 '0'..='9' => {
-                    let (num, amount) = lex_number(&self.data[i..]);
+                    let (num, amount) = lex_number(&self.data[idx..]);
                     idx += amount.saturating_sub(1);
                     num
                 }
                 'a'..='z' | 'A'..='Z' => {
-                    let ident = lex_ident(&self.data[i..]);
+                    let ident = lex_ident(&self.data[idx..]);
                     idx += ident.len().saturating_sub(1);
                     Token::Ident(ident)
                 }
 
                 _ => return Err(LexError::InvalidToken(ch.to_string())),
             };
+            idx += 1;
 
             tokens.push(tok);
         }
