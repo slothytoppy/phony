@@ -75,7 +75,7 @@ impl<'a> Ast<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(&mut self, tokens: Vec<Token<'a>>) -> Result<Ast<'a>, ParserError> {
+    pub fn parse(self, tokens: Vec<Token<'a>>) -> Result<Ast<'a>, ParserError> {
         let _ = tracing_subscriber::FmtSubscriber::builder()
             .with_ansi(true)
             .with_max_level(LevelFilter::INFO)
@@ -111,6 +111,8 @@ impl<'a> Parser<'a> {
 
             idx += 1;
         }
+
+        info!(?ast);
 
         Ok(ast)
     }
@@ -156,7 +158,10 @@ mod test {
     use tracing::{info, level_filters::LevelFilter};
     use tracing_subscriber::util::SubscriberInitExt;
 
-    use crate::{lexer::Lexer, parser::Node};
+    use crate::{
+        lexer::Lexer,
+        parser::{Node, Types},
+    };
 
     use super::{Ast, Parser, ParserError};
 

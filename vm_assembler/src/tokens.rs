@@ -3,7 +3,7 @@ use std::{num::IntErrorKind, str::FromStr};
 
 use crate::ParseError;
 use tracing::trace;
-use vm_cpu::registers::Register;
+use vm_cpu::{memory::Address, registers::Register};
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Lexer<'a> {
@@ -131,58 +131,56 @@ impl<'a> Number {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Address(pub u32);
+// #[derive(Debug, PartialEq, Eq, Clone)]
+// pub struct Address(pub u32);
+//
+// impl From<u8> for Address {
+//     fn from(value: u8) -> Self {
+//         Self(value as u32)
+//     }
+// }
+//
+// impl From<u16> for Address {
+//     fn from(value: u16) -> Self {
+//         Self(value as u32)
+//     }
+// }
+//
+// impl From<u32> for Address {
+//     fn from(value: u32) -> Self {
+//         Self(value)
+//     }
+// }
+//
+// impl From<i32> for Address {
+//     fn from(value: i32) -> Self {
+//         Self(value as u32)
+//     }
+// }
 
-impl From<u8> for Address {
-    fn from(value: u8) -> Self {
-        Self(value as u32)
-    }
-}
+fn parse_address(s: &str) -> Result<Address, ParseError<'_>> {
+    let s = s.trim();
 
-impl From<u16> for Address {
-    fn from(value: u16) -> Self {
-        Self(value as u32)
-    }
-}
+    let mut start = None;
 
-impl From<u32> for Address {
-    fn from(value: u32) -> Self {
-        Self(value)
-    }
-}
-
-impl From<i32> for Address {
-    fn from(value: i32) -> Self {
-        Self(value as u32)
-    }
-}
-
-impl Address {
-    fn parse(s: &str) -> Result<Self, ParseError<'_>> {
-        let s = s.trim();
-
-        let mut start = None;
-
-        for (i, ch) in s.chars().enumerate() {
-            match ch {
-                '[' => {
-                    start = Some(i + 1);
-                }
-                ']' => {
-                    assert!(start.is_some());
-                    trace!("{:?}", &s[start.unwrap()..i]);
-                    return match s[start.unwrap()..i].parse::<u32>() {
-                        Ok(val) => Ok(Address(val)),
-                        Err(e) => return Err(ParseError::InvalidNumber(e.kind().clone())),
-                    };
-                }
-                _ => {}
+    for (i, ch) in s.chars().enumerate() {
+        match ch {
+            '[' => {
+                start = Some(i + 1);
             }
+            ']' => {
+                assert!(start.is_some());
+                trace!("{:?}", &s[start.unwrap()..i]);
+                return match s[start.unwrap()..i].parse::<u32>() {
+                    Ok(val) => Ok(Address::from(val)),
+                    Err(e) => return Err(ParseError::InvalidNumber(e.kind().clone())),
+                };
+            }
+            _ => {}
         }
-
-        Err(ParseError::InvalidNumber(IntErrorKind::InvalidDigit))
     }
+
+    Err(ParseError::InvalidNumber(IntErrorKind::InvalidDigit))
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -210,7 +208,7 @@ fn lex_word(word: &str) -> Result<Token, ParseError> {
             '[' => start = Some(i),
             ']' => {
                 return Ok(Token::Address(
-                    Address::parse(&word[start.unwrap()..i + 1]).unwrap(),
+                    parse_address(&word[start.unwrap()..i + 1]).unwrap(),
                 ))
             }
             'a'..='z' => {
@@ -226,7 +224,7 @@ fn lex_word(word: &str) -> Result<Token, ParseError> {
         return Ok(Token::Register(reg));
     }
 
-    match Address::parse(word) {
+    match parse_address(word) {
         Ok(addr) => return Ok(Token::Address(addr)),
         Err(_e) => {}
     }
@@ -291,9 +289,9 @@ mod lexer_test {
         let ast = lexer.iter().collect::<Vec<_>>();
 
         let expected = [
-            &Token::Address(Address(1)),
+            &Token::Address(Address::from(1)),
             &Token::Space,
-            &Token::Address(Address(2)),
+            &Token::Address(Address::from(2)),
             &Token::Space,
             &Token::Number(Number::U8(1)),
         ];

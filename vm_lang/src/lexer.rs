@@ -91,7 +91,7 @@ impl<'a> Lexer<'a> {
 
         let mut idx = 0;
 
-        let mut chars = self.data.chars().collect::<Vec<_>>();
+        let chars = self.data.chars().collect::<Vec<_>>();
 
         loop {
             let Some(ch) = chars.get(idx) else { break };

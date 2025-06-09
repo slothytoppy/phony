@@ -8,6 +8,7 @@ use vm_cpu::memory::Address;
 
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::num;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,7 +50,7 @@ impl<'a> From<KeyWord> for AstNode<'a> {
 impl<'a> From<Token<'a>> for AstNode<'a> {
     fn from(value: Token<'a>) -> Self {
         match value {
-            Token::Address(address) => AstNode::Label(vm_cpu::memory::Address::from(address.0)),
+            Token::Address(address) => AstNode::Label(address),
             Token::Identifier(ident) => AstNode::Ident(ident),
             _ => AstNode::Token(value),
         }
@@ -79,6 +80,59 @@ impl<'a> Ast<'a> {
         if let Some(old_node) = self.nodes.get_mut(idx) {
             *old_node = node;
         }
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        let nodes = self.nodes;
+
+        let mut output = Vec::new();
+
+        for node in nodes {
+            match node {
+                AstNode::Token(token) => match token {
+                    Token::Register(register) => output.push(register as u8),
+                    Token::Number(number) => match number {
+                        crate::tokens::Number::U8(val) => output.push(val),
+                        crate::tokens::Number::U16(val) => {
+                            let bytes = val.to_le_bytes();
+
+                            for byte in bytes {
+                                output.push(byte);
+                            }
+                        }
+                        crate::tokens::Number::U32(val) => {
+                            let bytes = val.to_le_bytes();
+
+                            for byte in bytes {
+                                output.push(byte);
+                            }
+                        }
+                    },
+                    Token::Address(address) => {
+                        let val = u32::from(address).to_le_bytes();
+
+                        for byte in val {
+                            output.push(byte);
+                        }
+                    }
+                    // these tokens can not be turned into bytes as they do not conform to what
+                    // the cpu expects
+                    Token::Comma | Token::Space | Token::Identifier(_) => {}
+                },
+                AstNode::Label(address) => {
+                    let bytes = u32::from(address).to_le_bytes();
+
+                    for byte in bytes {
+                        output.push(byte)
+                    }
+                }
+                // these nodes can not be turned into bytes as they do not conform to what
+                // the cpu expects
+                AstNode::Ident(_) | AstNode::KeyWord(_) => {}
+            }
+        }
+
+        output
     }
 }
 
