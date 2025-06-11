@@ -6,6 +6,8 @@ use std::{
 
 use tracing::trace;
 
+use crate::memory::Address;
+
 #[derive(Debug)]
 pub enum Error {
     InvalidRegister(u8),
@@ -91,6 +93,22 @@ impl WordSize for u32 {
 
     fn lower(&self) -> Self::Output {
         let bytes = self.to_le_bytes();
+
+        Self::Output::from_le_bytes([bytes[0], bytes[1]])
+    }
+}
+
+impl WordSize for Address {
+    type Output = u16;
+
+    fn upper(&self) -> Self::Output {
+        let bytes = self.0.to_le_bytes();
+
+        Self::Output::from_le_bytes([bytes[2], bytes[3]])
+    }
+
+    fn lower(&self) -> Self::Output {
+        let bytes = self.0.to_le_bytes();
 
         Self::Output::from_le_bytes([bytes[0], bytes[1]])
     }

@@ -8,7 +8,6 @@ use vm_cpu::memory::Address;
 
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::num;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

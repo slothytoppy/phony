@@ -1,13 +1,11 @@
 use std::{fmt::Debug, ops::ControlFlow};
-
 use tracing::{info, instrument, trace, warn};
 
 use crate::{
     error::Error,
-    memory::{Address, Memory},
+    memory::{self, Address, CpuMemory},
     opcodes::{Comparison, Instruction, OpCode, Value},
     registers::{Register, Registers},
-    stack::{self},
 };
 
 #[derive(Debug)]
@@ -24,17 +22,22 @@ impl Default for Flags {
 }
 
 #[derive(Default, Debug)]
-pub struct Cpu<M: Memory> {
+pub struct Cpu {
     flags: Flags,
     registers: Registers,
     interrupt_table: Address,
     in_interrupt: bool,
     program_start: Address,
-    memory: M,
+    memory: CpuMemory,
 }
 
-impl<M: Memory> Cpu<M> {
-    pub fn new(memory: M, program_start: u32, stack_start: u32, interrupt_table: Address) -> Self {
+impl Cpu {
+    pub fn new(
+        memory: CpuMemory,
+        program_start: u32,
+        stack_start: u32,
+        interrupt_table: Address,
+    ) -> Self {
         Self {
             memory,
             registers: Registers::new(program_start, stack_start),
@@ -49,11 +52,11 @@ impl<M: Memory> Cpu<M> {
         &self.registers
     }
 
-    pub fn memory(&self) -> &M {
+    pub fn memory(&self) -> &CpuMemory {
         &self.memory
     }
 
-    pub fn memory_mut(&mut self) -> &mut M {
+    pub fn memory_mut(&mut self) -> &mut CpuMemory {
         &mut self.memory
     }
 
@@ -71,7 +74,8 @@ impl<M: Memory> Cpu<M> {
 
     fn fetch_instruction(&mut self) -> Result<Instruction, Error> {
         let ip = self.registers[Register::IP];
-        let op = OpCode::try_from(self.memory.read(ip)?)?;
+        let byte = self.memory.read(ip)?;
+        let op = OpCode::try_from(byte)?;
 
         let ip = ip + 1; // to skip the opcode and only deal with bytecodes
         let bytecode = self
@@ -508,7 +512,7 @@ impl<M: Memory> Cpu<M> {
         res
     }
 
-    fn write_val(&mut self, address: Address, val: u32) -> stack::Result<()> {
+    fn write_val(&mut self, address: Address, val: u32) -> Result<(), memory::Error> {
         trace!("writing to address {address} value {val}");
 
         let sp: Address = self.registers()[Register::SP].into();
@@ -523,7 +527,7 @@ impl<M: Memory> Cpu<M> {
         Ok(())
     }
 
-    fn push_stack(&mut self, val: u32) -> stack::Result<()> {
+    fn push_stack(&mut self, val: u32) -> Result<(), memory::Error> {
         let sp: Address = self.registers()[Register::SP].into();
 
         self.write_val(sp, val)?;
@@ -534,7 +538,7 @@ impl<M: Memory> Cpu<M> {
     }
 
     #[allow(unused)]
-    fn read_mem_u8<A>(&self, address: A) -> stack::Result<u8>
+    fn read_mem_u8<A>(&self, address: A) -> Result<u8, memory::Error>
     where
         A: Into<Address>,
     {
@@ -545,7 +549,7 @@ impl<M: Memory> Cpu<M> {
         Ok(val)
     }
 
-    fn read_mem_u32<A>(&self, address: A) -> stack::Result<u32>
+    fn read_mem_u32<A>(&self, address: A) -> Result<u32, memory::Error>
     where
         A: Into<Address>,
     {
@@ -567,7 +571,7 @@ impl<M: Memory> Cpu<M> {
         Ok(val)
     }
 
-    fn pop_stack(&mut self) -> stack::Result<u32> {
+    fn pop_stack(&mut self) -> Result<u32, memory::Error> {
         let sp: Address = self.registers[Register::SP].into();
 
         let val = self.read_mem_u32(sp)?;
@@ -578,7 +582,7 @@ impl<M: Memory> Cpu<M> {
         Ok(val)
     }
 
-    fn save_stack(&mut self) -> stack::Result<()> {
+    fn save_stack(&mut self) -> Result<(), memory::Error> {
         self.push_stack(self.registers[Register::R1])?;
         self.push_stack(self.registers[Register::R2])?;
         self.push_stack(self.registers[Register::R3])?;
@@ -596,7 +600,7 @@ impl<M: Memory> Cpu<M> {
         Ok(())
     }
 
-    fn restore_stack(&mut self) -> stack::Result<()> {
+    fn restore_stack(&mut self) -> Result<(), memory::Error> {
         let fp = self.registers[Register::FP];
 
         self.registers[Register::SP] = fp;
@@ -620,7 +624,7 @@ impl<M: Memory> Cpu<M> {
         Ok(())
     }
 
-    fn handle_interrupt(&mut self, idx: u32) -> stack::Result<()> {
+    fn handle_interrupt(&mut self, idx: u32) -> Result<(), memory::Error> {
         let ptr = self.interrupt_table + idx.into();
 
         if !self.in_interrupt {
@@ -643,12 +647,7 @@ mod test {
     use tracing::{info, level_filters::LevelFilter, trace};
     use tracing_subscriber::util::SubscriberInitExt;
 
-    use crate::{
-        memory::{Address, Memory},
-        opcodes::OpCode,
-        registers::Register,
-        stack::Stack,
-    };
+    use crate::{cpu::CpuMemory, memory::Address, opcodes::OpCode, registers::Register};
 
     use super::Cpu;
 
@@ -660,8 +659,8 @@ mod test {
             .try_init();
     }
 
-    fn setup_cpu(bytes: &[u8]) -> Cpu<Stack<{ u16::MAX as usize }>> {
-        let mut mem = Stack::<{ u16::MAX as usize }>::new();
+    fn setup_cpu(bytes: &[u8]) -> Cpu {
+        let mut mem = super::CpuMemory::default();
 
         mem.write_bytes(0, bytes as &[u8]).unwrap();
 
@@ -716,7 +715,7 @@ mod test {
     fn push_mem() {
         setup_logger();
 
-        let mut mem = Stack::<{ u16::MAX as usize }>::new();
+        let mut mem = CpuMemory::default();
 
         let bytes = &[OpCode::PushMem as u8, 6, 0, 0, 0, OpCode::Halt as u8, 90];
         mem.write_bytes(0, bytes as &[u8]).unwrap();
@@ -796,7 +795,7 @@ mod test {
     fn interrupt() {
         setup_logger();
 
-        let mut mem = Stack::<{ u16::MAX as usize }>::new();
+        let mut mem = CpuMemory::default();
 
         let bytes: &[u8] = &[
             OpCode::Interrupt as u8,
@@ -826,7 +825,7 @@ mod test {
     fn interrupt_reg() {
         setup_logger();
 
-        let mut mem = Stack::<{ u16::MAX as usize }>::new();
+        let mut mem = CpuMemory::default();
 
         let bytes: &[u8] = &[
             OpCode::MovRegU8 as u8,
@@ -870,7 +869,7 @@ mod test {
     fn read_mem_u32() {
         setup_logger();
 
-        let mut mem = Stack::<{ u16::MAX as usize }>::new();
+        let mut mem = CpuMemory::default();
 
         let bytes: &[u8] = &[6, 0, 0, 0];
         mem.write_bytes(0, bytes as &[u8]).unwrap();
@@ -881,4 +880,52 @@ mod test {
 
         assert!(val == 6)
     }
+
+    // #[test]
+    // fn mem_test() {
+    //     setup_logger();
+    //
+    //     let mut mem = CpuMemory::default();
+    //
+    //     let addr = mem.alloc(10);
+    //
+    //     mem.memcpy(addr.unwrap(), None);
+    // }
+    //
+    // #[test]
+    // fn page_test() {
+    //     setup_logger();
+    //
+    //     let mut mem = CpuMemory::default();
+    //
+    //     let addr = mem.alloc(4096);
+    //     let addr1 = mem.alloc(4096);
+    //
+    //     info!(?addr, ?addr1);
+    //
+    //     mem.memcpy(addr.unwrap(), Some(&[1]));
+    //     mem.memcpy(addr1.unwrap(), Some(&[2]));
+    //
+    //     info!(?mem);
+    // }
+    //
+    // #[test]
+    // fn pages_test() {
+    //     setup_logger();
+    //
+    //     let mut mem = CpuMemory::default();
+    //
+    //     let addr = mem.alloc(4096);
+    //     mem.memcpy(addr, Some(&[1; 4096]));
+    //     let addr = mem.alloc(4095 * 3);
+    //     let addr = mem.alloc(4096);
+    //     let addr = mem.alloc(4096);
+    //     let addr = mem.alloc(4096);
+    //     let addr = mem.alloc(4096);
+    //     let addr = mem.alloc(4096);
+    //     let addr = mem.alloc(4096);
+    //     let addr = mem.alloc(4096);
+    //
+    //     mem.memcpy(addr, Some(&[1; 40]));
+    // }
 }
